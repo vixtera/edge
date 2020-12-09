@@ -1,0 +1,12 @@
+# Docker Version
+- docker 17.06+
+- docker-compose 1.14.0+
+
+# Run
+docker-compose up -d --build --remove-orphans --scale simulator=10
+
+# Run with https
+export NETWORK_SSL_ENABLED=true
+export NETWORK_PORT_UI=443
+export NETWORK_PROTOCOL_GRAFANA=https
+docker-compose up -d --build --remove-orphans --scale simulator=10

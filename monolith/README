@@ -1,0 +1,20 @@
+# Docker Version
+- docker 17.06+
+- docker-compose 1.14.0+
+
+# Run
+docker-compose up -d --build --remove-orphans --scale simulator=10
+
+# Run with https
+export NETWORK_SSL_ENABLED=true
+export NETWORK_PORT_EDGE=8443
+export NETWORK_PROTOCOL_GRAFANA=https
+docker-compose up -d --build --remove-orphans --scale simulator=10
+
+# Default Network
+- subnet: 172.16.168.0/24
+- gateway: 172.16.168.1
+- edge: 172.16.168.100
+- timescaledb: 172.16.168.253
+- rabbit: 172.16.168.254
+- simulator range: 172.16.168.2 - 172.16.168.* (depends on --scale)

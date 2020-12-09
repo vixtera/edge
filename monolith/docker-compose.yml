@@ -1,0 +1,191 @@
+version: "3.3"
+
+networks:
+  edge-monolith:
+    driver: ${NETWORK_DRIVER}
+    ipam:
+      driver: ${NETWORK_IPAM_DRIVER}
+      config:
+        - subnet: ${NETWORK_SUBNET}
+
+services:
+
+  # Postgres
+  timescaledb:
+    image: timescale/timescaledb:latest-pg12
+    container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_POSTGRES}
+    hostname: ${SERVICE_NAME_POSTGRES}
+    ports:
+      - ${NETWORK_PORT_POSTGRES}:${NETWORK_PORT_POSTGRES}
+    networks:
+      edge-monolith:
+        ipv4_address: ${NETWORK_IP_POSTGRES}
+    environment:
+      - POSTGRES_DB=${ENV_POSTGRES_DB}
+      - POSTGRES_USER=${ENV_POSTGRES_USER}
+      - POSTGRES_PASSWORD=${ENV_POSTGRES_PASSWORD}
+    restart: on-failure
+
+  # RabbitMQ
+  rabbitmq:
+    image: rabbitmq:3.8-management
+    container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_RABBITMQ}
+    hostname: ${SERVICE_NAME_RABBITMQ}
+    ports:
+      - ${NETWORK_PORT_RABBITMQ1}:${NETWORK_PORT_RABBITMQ1}
+      - ${NETWORK_PORT_RABBITMQ2}:${NETWORK_PORT_RABBITMQ2}
+    networks:
+      edge-monolith:
+        ipv4_address: ${NETWORK_IP_RABBITMQ}
+    restart: on-failure
+
+  # Grafana
+  grafana:
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_GRAFANA}
+    container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_GRAFANA}
+    hostname: ${SERVICE_NAME_GRAFANA}
+    ports:
+      - ${NETWORK_PORT_GRAFANA}:${NETWORK_PORT_GRAFANA} # Native Grafana UI
+    networks:
+      edge-monolith:
+        ipv4_address: ${NETWORK_IP_GRAFANA}
+    environment:
+      - EDGE_ANALYTICS_URL=http://${NETWORK_IP_EDGE}:${NETWORK_PORT_EDGE}/analytics
+      - EDGE_RCA_URL=http://${NETWORK_IP_RCA}:${NETWORK_PORT_RCA}
+      - GF_SERVER_PROTOCOL=${NETWORK_PROTOCOL_GRAFANA}
+      - GF_SERVER_CERT_FILE=${ENV_GRAFANA_CERT_FILE}
+      - GF_SERVER_CERT_KEY=${ENV_GRAFANA_CERT_KEY}
+      - GF_SERVER_HTTP_PORT=${NETWORK_PORT_GRAFANA}
+      - NETWORK_PORT_ANALYTICS=${NETWORK_PORT_EDGE}
+      - NETWORK_IP_ANALYTICS=${NETWORK_IP_EDGE}
+    env_file:
+      - grafana.env
+    restart: on-failure
+
+  # Monolith
+  edge:
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_EDGE}
+    container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_EDGE}
+    hostname: ${SERVICE_NAME_EDGE}
+    ports:
+      - ${NETWORK_PORT_EDGE}:${NETWORK_PORT_EDGE}
+      - ${NETWORK_DEBUG_PORT_EDGE}:${NETWORK_DEBUG_PORT_EDGE}
+      - ${NETWORK_VISUAL_VM_PORT_EDGE}:${NETWORK_VISUAL_VM_PORT_EDGE}
+      - ${NETWORK_VISUAL_VM_RMI_PORT_EDGE}:${NETWORK_VISUAL_VM_RMI_PORT_EDGE}
+    networks:
+      edge-monolith:
+        ipv4_address: ${NETWORK_IP_EDGE}
+    depends_on:
+      - timescaledb
+      - rabbitmq
+    environment:
+      - SECURITY_PROFILE=${SECURITY_PROFILE}
+      - IGNITE_JETTY_PORT=${IGNITE_JETTY_PORT}
+      - SERVER_PORT=${NETWORK_PORT_EDGE}
+      - SSL_ENABLED=${NETWORK_SSL_ENABLED}
+      - GRAFANA_URL=${NETWORK_PROTOCOL_GRAFANA}://${NETWORK_IP_DOCKER_HOST}:${NETWORK_PORT_GRAFANA}
+      - ANALYTICS_URL=http://${NETWORK_IP_EDGE}:${NETWORK_PORT_EDGE}/analytics
+      - POLLING_AUDIT_ENABLED=${ENV_POLLING_AUDIT_ENABLED}
+      - CLOUD_CONNECTOR_AUDIT_ENABLED=${ENV_CLOUD_CONNECTOR_AUDIT_ENABLED}
+      - POSTGRES_URL=jdbc:postgresql://${NETWORK_IP_POSTGRES}:${NETWORK_PORT_POSTGRES}/${ENV_POSTGRES_DB}
+      - POSTGRES_USERNAME=${ENV_POSTGRES_USER}
+      - POSTGRES_PASSWORD=${ENV_POSTGRES_PASSWORD}
+      - ENV_DEMO_DISCOVERY_PROFILE_NAME_1=${ENV_DEMO_DISCOVERY_PROFILE_NAME_1}
+      - ENV_DEMO_DISCOVERY_PROFILE_IPS_1=${ENV_DEMO_DISCOVERY_PROFILE_IPS_1}
+      - ENV_DEMO_DISCOVERY_PROFILE_NAME_2=${ENV_DEMO_DISCOVERY_PROFILE_NAME_2}
+      - ENV_DEMO_DISCOVERY_PROFILE_IPS_2=${ENV_DEMO_DISCOVERY_PROFILE_IPS_2}
+      - ENV_DEMO_POLLING_PROFILE_NAME=${ENV_DEMO_POLLING_PROFILE_NAME}
+      - ENV_DEMO_POLLING_PROFILE_PERSPECTIVE=${ENV_DEMO_POLLING_PROFILE_PERSPECTIVE}
+      - ENV_DEMO_POLLING_PROFILE_INTERVAL=${ENV_DEMO_POLLING_PROFILE_INTERVAL}
+      - ENV_DEMO_RCA_PERSPECTIVE_NAME=${ENV_DEMO_RCA_PERSPECTIVE_NAME}
+      - ENV_DEMO_RCA_SCENARIO_NAME=${ENV_DEMO_RCA_SCENARIO_NAME}
+      - ENV_DEMO_RCA_INTERVAL=${ENV_DEMO_RCA_INTERVAL}
+      - EVENTS_RETENTION_CONFIG_ENABLED=${EVENTS_RETENTION_CONFIG_ENABLED}
+      - EVENTS_RETENTION_LIFETIME_SECONDS=${EVENTS_RETENTION_LIFETIME_SECONDS}
+      - EVENTS_RETENTION_CLEANING_STARTS_FREQUENSY_SECONDS=${EVENTS_RETENTION_CLEANING_STARTS_FREQUENSY_SECONDS}
+    env_file:
+      - ./rabbitmq.env
+    entrypoint: ["dockerize",
+                 "-wait","tcp://${NETWORK_IP_POSTGRES}:${NETWORK_PORT_POSTGRES}",
+                 "-wait","tcp://${NETWORK_IP_RABBITMQ}:${NETWORK_PORT_RABBITMQ1}",
+                 "-timeout","${DOCKERIZE_WAIT_TIMEOUT}",
+                 "java",
+                 "-Dcom.sun.management.jmxremote",
+                 "-Dcom.sun.management.jmxremote.rmi.port=${NETWORK_VISUAL_VM_RMI_PORT_EDGE}",
+                 "-Dcom.sun.management.jmxremote.port=${NETWORK_VISUAL_VM_PORT_EDGE}",
+                 "-Dcom.sun.management.jmxremote.local.only=false",
+                 "-Dcom.sun.management.jmxremote.authenticate=false",
+                 "-Dcom.sun.management.jmxremote.ssl=false",
+                 "-Djava.rmi.server.hostname=${NETWORK_IP_DOCKER_HOST}",
+                 "-agentlib:jdwp=transport=dt_socket,address=${NETWORK_DEBUG_PORT_EDGE},server=y,suspend=n",
+                 "-XX:MaxRAM=2048m",
+                 "-Xms512m",
+                 "-Xmx1024m",
+                 "-jar","./app.jar"]
+    restart: on-failure
+
+  # RCA Service
+  rca:
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_RCA}
+    container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_RCA}
+    hostname: ${SERVICE_NAME_RCA}
+    ports:
+      - ${NETWORK_PORT_RCA}:${NETWORK_PORT_RCA}
+      - ${NETWORK_DEBUG_PORT_RCA}:${NETWORK_DEBUG_PORT_RCA}
+      - ${NETWORK_VISUAL_VM_PORT_RCA}:${NETWORK_VISUAL_VM_PORT_RCA}
+      - ${NETWORK_VISUAL_VM_RMI_PORT_RCA}:${NETWORK_VISUAL_VM_RMI_PORT_RCA}
+    networks:
+      edge-monolith:
+        ipv4_address: ${NETWORK_IP_RCA}
+    depends_on:
+      - edge
+    environment:
+      - SERVER_PORT=${NETWORK_PORT_RCA}
+      - ANALYTICS_URL=http://${NETWORK_IP_EDGE}:${NETWORK_PORT_EDGE}/analytics
+      - POSTGRES_URL=jdbc:postgresql://${NETWORK_IP_POSTGRES}:${NETWORK_PORT_POSTGRES}/${ENV_POSTGRES_DB}
+      - POSTGRES_USERNAME=${ENV_POSTGRES_USER}
+      - POSTGRES_PASSWORD=${ENV_POSTGRES_PASSWORD}
+    env_file:
+      - ./rabbitmq.env
+    entrypoint: ["dockerize",
+                 "-wait","tcp://${NETWORK_IP_EDGE}:${NETWORK_PORT_EDGE}",
+                 "-timeout","${DOCKERIZE_WAIT_TIMEOUT}",
+                 "java",
+                 "-Dcom.sun.management.jmxremote",
+                 "-Dcom.sun.management.jmxremote.rmi.port=${NETWORK_VISUAL_VM_RMI_PORT_RCA}",
+                 "-Dcom.sun.management.jmxremote.port=${NETWORK_VISUAL_VM_PORT_RCA}",
+                 "-Dcom.sun.management.jmxremote.local.only=false",
+                 "-Dcom.sun.management.jmxremote.authenticate=false",
+                 "-Dcom.sun.management.jmxremote.ssl=false",
+                 "-Djava.rmi.server.hostname=${NETWORK_IP_DOCKER_HOST}",
+                 "-agentlib:jdwp=transport=dt_socket,address=${NETWORK_DEBUG_PORT_RCA},server=y,suspend=n",
+                 "-XX:MaxRAM=256m",
+                 "-jar","./app.jar"]
+    restart: on-failure
+
+  # Default Simulator
+  default-simulator:
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_SIMULATOR}
+    container_name: ${SERVICES_PREFIX}-default-${SERVICE_NAME_SIMULATOR}
+    hostname: default-${SERVICE_NAME_SIMULATOR}
+    ports:
+      - ${NETWORK_PORT_SIMULATOR}:${NETWORK_PORT_SIMULATOR}
+    networks:
+      edge-monolith:
+        ipv4_address: ${NETWORK_IP_SIMULATOR}
+    environment:
+      - SERVER_PORT=${NETWORK_PORT_SIMULATOR}
+      - SIMULATOR_INFO_TYPE=${ENV_SIMULATOR_INFO_TYPE}
+      - SIMULATOR_INFO_NAME=${ENV_SIMULATOR_INFO_NAME}
+    restart: on-failure
+
+  # Simulator
+  simulator:
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_SIMULATOR}
+    expose:
+      - ${NETWORK_PORT_SIMULATOR}
+    networks:
+      - edge-monolith
+    environment:
+      - SERVER_PORT=${NETWORK_PORT_SIMULATOR}
+    restart: on-failure

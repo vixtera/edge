@@ -1,0 +1,1333 @@
+version: "3.3"
+
+networks:
+  edge:
+    driver: ${NETWORK_DRIVER}
+    ipam:
+      driver: ${NETWORK_IPAM_DRIVER}
+      config:
+        - subnet: ${NETWORK_SUBNET}
+
+services:
+
+  # Postgres
+  timescaledb:
+    image: timescale/timescaledb:latest-pg12
+    container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_POSTGRES}
+    hostname: ${SERVICE_NAME_POSTGRES}
+    ports:
+      - ${NETWORK_PORT_POSTGRES}:${NETWORK_PORT_POSTGRES}
+    networks:
+      edge:
+        ipv4_address: ${NETWORK_IP_POSTGRES}
+    environment:
+      - POSTGRES_DB=${ENV_POSTGRES_DB}
+      - POSTGRES_USER=${ENV_POSTGRES_USER}
+      - POSTGRES_PASSWORD=${ENV_POSTGRES_PASSWORD}
+    command: ["-c", "shared_buffers=256MB", "-c", "max_connections=200"]
+    restart: on-failure
+
+  # RabbitMQ
+  rabbitmq:
+    image: rabbitmq:3.8-management
+    container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_RABBITMQ}
+    hostname: ${SERVICE_NAME_RABBITMQ}
+    ports:
+      - ${NETWORK_PORT_RABBITMQ1}:${NETWORK_PORT_RABBITMQ1}
+      - ${NETWORK_PORT_RABBITMQ2}:${NETWORK_PORT_RABBITMQ2}
+    networks:
+      edge:
+        ipv4_address: ${NETWORK_IP_RABBITMQ}
+    restart: on-failure
+
+  # Service Registry
+  service-registry:
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_SERVICE_REGISTRY}
+    container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_SERVICE_REGISTRY}
+    hostname: ${SERVICE_NAME_SERVICE_REGISTRY}
+    ports:
+      - ${NETWORK_PORT_SERVICE_REGISTRY}:${NETWORK_PORT_SERVICE_REGISTRY}
+      - ${NETWORK_DEBUG_PORT_SERVICE_REGISTRY}:${NETWORK_DEBUG_PORT_SERVICE_REGISTRY}
+      - ${NETWORK_VISUAL_VM_PORT_SERVICE_REGISTRY}:${NETWORK_VISUAL_VM_PORT_SERVICE_REGISTRY}
+      - ${NETWORK_VISUAL_VM_RMI_PORT_SERVICE_REGISTRY}:${NETWORK_VISUAL_VM_RMI_PORT_SERVICE_REGISTRY}
+    networks:
+      edge:
+        ipv4_address: ${NETWORK_IP_SERVICE_REGISTRY}
+    depends_on:
+      - rabbitmq
+    environment:
+      - SERVER_PORT=${NETWORK_PORT_SERVICE_REGISTRY}
+    entrypoint: ["dockerize",
+                 "-wait","tcp://${NETWORK_IP_RABBITMQ}:${NETWORK_PORT_RABBITMQ1}",
+                 "-timeout","${DOCKERIZE_WAIT_TIMEOUT}",
+                 "java",
+                 "-Dcom.sun.management.jmxremote",
+                 "-Dcom.sun.management.jmxremote.rmi.port=${NETWORK_VISUAL_VM_RMI_PORT_SERVICE_REGISTRY}",
+                 "-Dcom.sun.management.jmxremote.port=${NETWORK_VISUAL_VM_PORT_SERVICE_REGISTRY}",
+                 "-Dcom.sun.management.jmxremote.local.only=false",
+                 "-Dcom.sun.management.jmxremote.authenticate=false",
+                 "-Dcom.sun.management.jmxremote.ssl=false",
+                 "-Djava.rmi.server.hostname=${NETWORK_IP_DOCKER_HOST}",
+                 "-agentlib:jdwp=transport=dt_socket,address=${NETWORK_DEBUG_PORT_SERVICE_REGISTRY},server=y,suspend=n",
+                 "-XX:MaxRAM=256m",
+                 "-jar","./app.jar"]
+    restart: on-failure
+
+  # UAA Service
+  uaa-service:
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_UAA_SERVICE}
+    container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_UAA_SERVICE}
+    hostname: ${SERVICE_NAME_UAA_SERVICE}
+    ports:
+      - ${NETWORK_PORT_UAA_SERVICE}:${NETWORK_PORT_UAA_SERVICE}
+      - ${NETWORK_DEBUG_PORT_UAA_SERVICE}:${NETWORK_DEBUG_PORT_UAA_SERVICE}
+      - ${NETWORK_VISUAL_VM_PORT_UAA_SERVICE}:${NETWORK_VISUAL_VM_PORT_UAA_SERVICE}
+      - ${NETWORK_VISUAL_VM_RMI_PORT_UAA_SERVICE}:${NETWORK_VISUAL_VM_RMI_PORT_UAA_SERVICE}
+    networks:
+      edge:
+        ipv4_address: ${NETWORK_IP_UAA_SERVICE}
+    depends_on:
+      - rabbitmq
+      - service-registry
+    environment:
+      - SERVER_PORT=${NETWORK_PORT_UAA_SERVICE}
+      - EUREKA_URL=http://${NETWORK_IP_SERVICE_REGISTRY}:${NETWORK_PORT_SERVICE_REGISTRY}/eureka/
+      - SECURITY_PROFILE=${SECURITY_PROFILE}
+      - POSTGRES_URL=jdbc:postgresql://${NETWORK_IP_POSTGRES}:${NETWORK_PORT_POSTGRES}/${ENV_POSTGRES_DB}
+      - POSTGRES_USERNAME=${ENV_POSTGRES_USER}
+      - POSTGRES_PASSWORD:${ENV_POSTGRES_PASSWORD}
+    entrypoint: ["dockerize",
+                 "-wait","tcp://${NETWORK_IP_RABBITMQ}:${NETWORK_PORT_RABBITMQ1}",
+                 "-wait","tcp://${NETWORK_IP_SERVICE_REGISTRY}:${NETWORK_PORT_SERVICE_REGISTRY}",
+                 "-timeout","${DOCKERIZE_WAIT_TIMEOUT}",
+                 "java",
+                 "-Dcom.sun.management.jmxremote",
+                 "-Dcom.sun.management.jmxremote.rmi.port=${NETWORK_VISUAL_VM_RMI_PORT_UAA_SERVICE}",
+                 "-Dcom.sun.management.jmxremote.port=${NETWORK_VISUAL_VM_PORT_UAA_SERVICE}",
+                 "-Dcom.sun.management.jmxremote.local.only=false",
+                 "-Dcom.sun.management.jmxremote.authenticate=false",
+                 "-Dcom.sun.management.jmxremote.ssl=false",
+                 "-Djava.rmi.server.hostname=${NETWORK_IP_DOCKER_HOST}",
+                 "-agentlib:jdwp=transport=dt_socket,address=${NETWORK_DEBUG_PORT_UAA_SERVICE},server=y,suspend=n",
+                 "-XX:MaxRAM=256m","-jar","./app.jar"]
+    restart: on-failure
+
+  # Cache
+  cache:
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_CACHE}
+    container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_CACHE}
+    hostname: ${SERVICE_NAME_CACHE}
+    ports:
+      - ${NETWORK_PORT_CACHE}:${NETWORK_PORT_CACHE}
+      - ${NETWORK_DEBUG_PORT_CACHE}:${NETWORK_DEBUG_PORT_CACHE}
+      - ${NETWORK_VISUAL_VM_PORT_CACHE}:${NETWORK_VISUAL_VM_PORT_CACHE}
+      - ${NETWORK_VISUAL_VM_RMI_PORT_CACHE}:${NETWORK_VISUAL_VM_RMI_PORT_CACHE}
+    networks:
+      edge:
+        ipv4_address: ${NETWORK_IP_CACHE}
+    depends_on:
+      - rabbitmq
+      - service-registry
+      - uaa-service
+    environment:
+      - SERVER_PORT=${NETWORK_PORT_CACHE}
+      - EUREKA_URL=http://${NETWORK_IP_SERVICE_REGISTRY}:${NETWORK_PORT_SERVICE_REGISTRY}/eureka/
+      - UAA_SERVICE_NAME=${SERVICE_NAME_UAA_SERVICE}
+      - SECURITY_PROFILE=${SECURITY_PROFILE}
+      - IGNITE_JETTY_PORT=${IGNITE_JETTY_PORT}
+    env_file:
+      - ./rabbitmq.env
+    entrypoint: ["dockerize",
+                 "-wait","tcp://${NETWORK_IP_RABBITMQ}:${NETWORK_PORT_RABBITMQ1}",
+                 "-wait","tcp://${NETWORK_IP_SERVICE_REGISTRY}:${NETWORK_PORT_SERVICE_REGISTRY}",
+                 "-wait","tcp://${NETWORK_IP_UAA_SERVICE}:${NETWORK_PORT_UAA_SERVICE}",
+                 "-timeout","${DOCKERIZE_WAIT_TIMEOUT}",
+                 "java",
+                 "-Dcom.sun.management.jmxremote",
+                 "-Dcom.sun.management.jmxremote.rmi.port=${NETWORK_VISUAL_VM_RMI_PORT_CACHE}",
+                 "-Dcom.sun.management.jmxremote.port=${NETWORK_VISUAL_VM_PORT_CACHE}",
+                 "-Dcom.sun.management.jmxremote.local.only=false",
+                 "-Dcom.sun.management.jmxremote.authenticate=false",
+                 "-Dcom.sun.management.jmxremote.ssl=false",
+                 "-Djava.rmi.server.hostname=${NETWORK_IP_DOCKER_HOST}",
+                 "-agentlib:jdwp=transport=dt_socket,address=${NETWORK_DEBUG_PORT_CACHE},server=y,suspend=n",
+                 "-XX:MaxRAM=256m","-jar","./app.jar"]
+    restart: on-failure
+
+  # Catalog
+  catalog:
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_CATALOG}
+    container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_CATALOG}
+    hostname: ${SERVICE_NAME_CATALOG}
+    ports:
+      - ${NETWORK_PORT_CATALOG}:${NETWORK_PORT_CATALOG}
+      - ${NETWORK_DEBUG_PORT_CATALOG}:${NETWORK_DEBUG_PORT_CATALOG}
+      - ${NETWORK_VISUAL_VM_PORT_CATALOG}:${NETWORK_VISUAL_VM_PORT_CATALOG}
+      - ${NETWORK_VISUAL_VM_RMI_PORT_CATALOG}:${NETWORK_VISUAL_VM_RMI_PORT_CATALOG}
+    networks:
+      edge:
+        ipv4_address: ${NETWORK_IP_CATALOG}
+    depends_on:
+      - timescaledb
+      - rabbitmq
+      - service-registry
+      - uaa-service
+      - cache
+    environment:
+      - SERVER_PORT=${NETWORK_PORT_CATALOG}
+      - EUREKA_URL=http://${NETWORK_IP_SERVICE_REGISTRY}:${NETWORK_PORT_SERVICE_REGISTRY}/eureka/
+      - UAA_SERVICE_NAME=${SERVICE_NAME_UAA_SERVICE}
+      - SECURITY_PROFILE=${SECURITY_PROFILE}
+      - POSTGRES_URL=jdbc:postgresql://${NETWORK_IP_POSTGRES}:${NETWORK_PORT_POSTGRES}/${ENV_POSTGRES_DB}
+      - POSTGRES_USERNAME=${ENV_POSTGRES_USER}
+      - POSTGRES_PASSWORD:${ENV_POSTGRES_PASSWORD}
+    env_file:
+      - ./rabbitmq.env
+    entrypoint: ["dockerize",
+                 "-wait","tcp://${NETWORK_IP_POSTGRES}:${NETWORK_PORT_POSTGRES}",
+                 "-wait","tcp://${NETWORK_IP_RABBITMQ}:${NETWORK_PORT_RABBITMQ1}",
+                 "-wait","tcp://${NETWORK_IP_SERVICE_REGISTRY}:${NETWORK_PORT_SERVICE_REGISTRY}",
+                 "-wait","tcp://${NETWORK_IP_CACHE}:${NETWORK_PORT_CACHE}",
+                 "-timeout","${DOCKERIZE_WAIT_TIMEOUT}",
+                 "java",
+                 "-Dcom.sun.management.jmxremote",
+                 "-Dcom.sun.management.jmxremote.rmi.port=${NETWORK_VISUAL_VM_RMI_PORT_CATALOG}",
+                 "-Dcom.sun.management.jmxremote.port=${NETWORK_VISUAL_VM_PORT_CATALOG}",
+                 "-Dcom.sun.management.jmxremote.local.only=false",
+                 "-Dcom.sun.management.jmxremote.authenticate=false",
+                 "-Dcom.sun.management.jmxremote.ssl=false",
+                 "-Djava.rmi.server.hostname=${NETWORK_IP_DOCKER_HOST}",
+                 "-agentlib:jdwp=transport=dt_socket,address=${NETWORK_DEBUG_PORT_CATALOG},server=y,suspend=n",
+                 "-XX:MaxRAM=256m","-jar","./app.jar"]
+    restart: on-failure
+
+  # Inventory
+  inventory:
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_INVENTORY}
+    container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_INVENTORY}
+    hostname: ${SERVICE_NAME_INVENTORY}
+    ports:
+      - ${NETWORK_PORT_INVENTORY}:${NETWORK_PORT_INVENTORY}
+      - ${NETWORK_DEBUG_PORT_INVENTORY}:${NETWORK_DEBUG_PORT_INVENTORY}
+      - ${NETWORK_VISUAL_VM_PORT_INVENTORY}:${NETWORK_VISUAL_VM_PORT_INVENTORY}
+      - ${NETWORK_VISUAL_VM_RMI_PORT_INVENTORY}:${NETWORK_VISUAL_VM_RMI_PORT_INVENTORY}
+    networks:
+      edge:
+        ipv4_address: ${NETWORK_IP_INVENTORY}
+    depends_on:
+      - rabbitmq
+      - timescaledb
+      - service-registry
+      - uaa-service
+      - catalog
+      - cache
+    environment:
+      - SERVER_PORT=${NETWORK_PORT_INVENTORY}
+      - EUREKA_URL=http://${NETWORK_IP_SERVICE_REGISTRY}:${NETWORK_PORT_SERVICE_REGISTRY}/eureka/
+      - UAA_SERVICE_NAME=${SERVICE_NAME_UAA_SERVICE}
+      - SECURITY_PROFILE=${SECURITY_PROFILE}
+      - POSTGRES_URL=jdbc:postgresql://${NETWORK_IP_POSTGRES}:${NETWORK_PORT_POSTGRES}/${ENV_POSTGRES_DB}
+      - POSTGRES_USERNAME=${ENV_POSTGRES_USER}
+      - POSTGRES_PASSWORD:${ENV_POSTGRES_PASSWORD}
+      - ENV_DEMO_DISCOVERY_PROFILE_NAME_1=${ENV_DEMO_DISCOVERY_PROFILE_NAME_1}
+      - ENV_DEMO_DISCOVERY_PROFILE_IPS_1=${ENV_DEMO_DISCOVERY_PROFILE_IPS_1}
+      - ENV_DEMO_DISCOVERY_PROFILE_NAME_2=${ENV_DEMO_DISCOVERY_PROFILE_NAME_2}
+      - ENV_DEMO_DISCOVERY_PROFILE_IPS_2=${ENV_DEMO_DISCOVERY_PROFILE_IPS_2}
+      - ENV_DEMO_POLLING_PROFILE_NAME=${ENV_DEMO_POLLING_PROFILE_NAME}
+      - ENV_DEMO_POLLING_PROFILE_PERSPECTIVE=${ENV_DEMO_POLLING_PROFILE_PERSPECTIVE}
+      - ENV_DEMO_POLLING_PROFILE_INTERVAL=${ENV_DEMO_POLLING_PROFILE_INTERVAL}
+      - ENV_DEMO_RCA_PERSPECTIVE_NAME=${ENV_DEMO_RCA_PERSPECTIVE_NAME}
+      - ENV_DEMO_RCA_SCENARIO_NAME=${ENV_DEMO_RCA_SCENARIO_NAME}
+      - ENV_DEMO_RCA_INTERVAL=${ENV_DEMO_RCA_INTERVAL}
+    env_file:
+      - ./rabbitmq.env
+    entrypoint: ["dockerize",
+                 "-wait","tcp://${NETWORK_IP_POSTGRES}:${NETWORK_PORT_POSTGRES}",
+                 "-wait","tcp://${NETWORK_IP_RABBITMQ}:${NETWORK_PORT_RABBITMQ1}",
+                 "-wait","tcp://${NETWORK_IP_SERVICE_REGISTRY}:${NETWORK_PORT_SERVICE_REGISTRY}",
+                 "-wait","tcp://${NETWORK_IP_CACHE}:${NETWORK_PORT_CACHE}",
+                 "-wait","tcp://${NETWORK_IP_CATALOG}:${NETWORK_PORT_CATALOG}",
+                 "-timeout","${DOCKERIZE_WAIT_TIMEOUT}",
+                 "java",
+                 "-Dcom.sun.management.jmxremote",
+                 "-Dcom.sun.management.jmxremote.rmi.port=${NETWORK_VISUAL_VM_RMI_PORT_INVENTORY}",
+                 "-Dcom.sun.management.jmxremote.port=${NETWORK_VISUAL_VM_PORT_INVENTORY}",
+                 "-Dcom.sun.management.jmxremote.local.only=false",
+                 "-Dcom.sun.management.jmxremote.authenticate=false",
+                 "-Dcom.sun.management.jmxremote.ssl=false",
+                 "-Djava.rmi.server.hostname=${NETWORK_IP_DOCKER_HOST}",
+                 "-agentlib:jdwp=transport=dt_socket,address=${NETWORK_DEBUG_PORT_INVENTORY},server=y,suspend=n",
+                 "-XX:MaxRAM=1024m","-Xms256m", "-Xmx512m",
+                 "-jar", "./app.jar"]
+    restart: on-failure
+
+  # Agent Orchestrator
+  agent-orchestrator:
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_AGENT_ORCHESTRATOR}
+    container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_AGENT_ORCHESTRATOR}
+    hostname: ${SERVICE_NAME_AGENT_ORCHESTRATOR}
+    ports:
+      - ${NETWORK_PORT_AGENT_ORCHESTRATOR}:${NETWORK_PORT_AGENT_ORCHESTRATOR}
+      - ${NETWORK_DEBUG_PORT_AGENT_ORCHESTRATOR}:${NETWORK_DEBUG_PORT_AGENT_ORCHESTRATOR}
+      - ${NETWORK_VISUAL_VM_PORT_AGENT_ORCHESTRATOR}:${NETWORK_VISUAL_VM_PORT_AGENT_ORCHESTRATOR}
+      - ${NETWORK_VISUAL_VM_RMI_PORT_AGENT_ORCHESTRATOR}:${NETWORK_VISUAL_VM_RMI_PORT_AGENT_ORCHESTRATOR}
+    networks:
+      edge:
+        ipv4_address: ${NETWORK_IP_AGENT_ORCHESTRATOR}
+    depends_on:
+      - timescaledb
+      - rabbitmq
+      - service-registry
+      - uaa-service
+      - catalog
+      - inventory
+      - cache
+    environment:
+      - SERVER_PORT=${NETWORK_PORT_AGENT_ORCHESTRATOR}
+      - EUREKA_URL=http://${NETWORK_IP_SERVICE_REGISTRY}:${NETWORK_PORT_SERVICE_REGISTRY}/eureka/
+      - UAA_SERVICE_NAME=${SERVICE_NAME_UAA_SERVICE}
+      - SECURITY_PROFILE=${SECURITY_PROFILE}
+    env_file:
+      - ./rabbitmq.env
+    entrypoint: ["dockerize",
+                 "-wait","tcp://${NETWORK_IP_RABBITMQ}:${NETWORK_PORT_RABBITMQ1}",
+                 "-wait","tcp://${NETWORK_IP_SERVICE_REGISTRY}:${NETWORK_PORT_SERVICE_REGISTRY}",
+                 "-wait","tcp://${NETWORK_IP_CACHE}:${NETWORK_PORT_CACHE}",
+                 "-wait","tcp://${NETWORK_IP_CATALOG}:${NETWORK_PORT_CATALOG}",
+                 "-wait","tcp://${NETWORK_IP_INVENTORY}:${NETWORK_PORT_INVENTORY}",
+                 "-timeout","${DOCKERIZE_WAIT_TIMEOUT}",
+                 "java",
+                 "-Dcom.sun.management.jmxremote",
+                 "-Dcom.sun.management.jmxremote.rmi.port=${NETWORK_VISUAL_VM_RMI_PORT_AGENT_ORCHESTRATOR}",
+                 "-Dcom.sun.management.jmxremote.port=${NETWORK_VISUAL_VM_PORT_AGENT_ORCHESTRATOR}",
+                 "-Dcom.sun.management.jmxremote.local.only=false",
+                 "-Dcom.sun.management.jmxremote.authenticate=false",
+                 "-Dcom.sun.management.jmxremote.ssl=false",
+                 "-Djava.rmi.server.hostname=${NETWORK_IP_DOCKER_HOST}",
+                 "-agentlib:jdwp=transport=dt_socket,address=${NETWORK_DEBUG_PORT_AGENT_ORCHESTRATOR},server=y,suspend=n",
+                 "-XX:MaxRAM=1024m","-Xms256m", "-Xmx512m",
+                 "-jar","./app.jar"]
+    restart: on-failure
+
+  # Agent
+  agent:
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_AGENT}
+    container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_AGENT}
+    hostname: ${SERVICE_NAME_AGENT}
+    ports:
+      - ${NETWORK_PORT_AGENT}:${NETWORK_PORT_AGENT}
+      - ${NETWORK_DEBUG_PORT_AGENT}:${NETWORK_DEBUG_PORT_AGENT}
+      - ${NETWORK_VISUAL_VM_PORT_AGENT}:${NETWORK_VISUAL_VM_PORT_AGENT}
+      - ${NETWORK_VISUAL_VM_RMI_PORT_AGENT}:${NETWORK_VISUAL_VM_RMI_PORT_AGENT}
+    networks:
+      edge:
+        ipv4_address: ${NETWORK_IP_AGENT}
+    depends_on:
+      - rabbitmq
+      - service-registry
+      - uaa-service
+      - catalog
+      - inventory
+      - agent-orchestrator
+      - cache
+    environment:
+      - SERVER_PORT=${NETWORK_PORT_AGENT}
+      - EUREKA_URL=http://${NETWORK_IP_SERVICE_REGISTRY}:${NETWORK_PORT_SERVICE_REGISTRY}/eureka/
+      - UAA_SERVICE_NAME=${SERVICE_NAME_UAA_SERVICE}
+      - SECURITY_PROFILE=${SECURITY_PROFILE}
+    env_file:
+      - ./rabbitmq.env
+    entrypoint: ["dockerize",
+                 "-wait","tcp://${NETWORK_IP_RABBITMQ}:${NETWORK_PORT_RABBITMQ1}",
+                 "-wait","tcp://${NETWORK_IP_SERVICE_REGISTRY}:${NETWORK_PORT_SERVICE_REGISTRY}",
+                 "-wait","tcp://${NETWORK_IP_CACHE}:${NETWORK_PORT_CACHE}",
+                 "-wait","tcp://${NETWORK_IP_CATALOG}:${NETWORK_PORT_CATALOG}",
+                 "-wait","tcp://${NETWORK_IP_INVENTORY}:${NETWORK_PORT_INVENTORY}",
+                 "-wait","tcp://${NETWORK_IP_AGENT_ORCHESTRATOR}:${NETWORK_PORT_AGENT_ORCHESTRATOR}",
+                 "-timeout","${DOCKERIZE_WAIT_TIMEOUT}",
+                 "java",
+                 "-Dcom.sun.management.jmxremote",
+                 "-Dcom.sun.management.jmxremote.rmi.port=${NETWORK_VISUAL_VM_RMI_PORT_AGENT}",
+                 "-Dcom.sun.management.jmxremote.port=${NETWORK_VISUAL_VM_PORT_AGENT}",
+                 "-Dcom.sun.management.jmxremote.local.only=false",
+                 "-Dcom.sun.management.jmxremote.authenticate=false",
+                 "-Dcom.sun.management.jmxremote.ssl=false",
+                 "-Djava.rmi.server.hostname=${NETWORK_IP_DOCKER_HOST}",
+                 "-agentlib:jdwp=transport=dt_socket,address=${NETWORK_DEBUG_PORT_AGENT},server=y,suspend=n",
+                 "-XX:MaxRAM=256m","-jar","./app.jar"]
+    restart: on-failure
+
+  # Event Manager
+  event-manager:
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_EVENT_MANAGER}
+    container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_EVENT_MANAGER}
+    hostname: ${SERVICE_NAME_EVENT_MANAGER}
+    ports:
+      - ${NETWORK_PORT_EVENT_MANAGER}:${NETWORK_PORT_EVENT_MANAGER}
+      - ${NETWORK_DEBUG_PORT_EVENT_MANAGER}:${NETWORK_DEBUG_PORT_EVENT_MANAGER}
+      - ${NETWORK_VISUAL_VM_PORT_EVENT_MANAGER}:${NETWORK_VISUAL_VM_PORT_EVENT_MANAGER}
+      - ${NETWORK_VISUAL_VM_RMI_PORT_EVENT_MANAGER}:${NETWORK_VISUAL_VM_RMI_PORT_EVENT_MANAGER}
+    networks:
+      edge:
+        ipv4_address: ${NETWORK_IP_EVENT_MANAGER}
+    depends_on:
+      - timescaledb
+      - rabbitmq
+      - service-registry
+      - uaa-service
+      - catalog
+      - inventory
+      - agent-orchestrator
+      - agent
+      - cache
+    environment:
+      - SERVER_PORT=${NETWORK_PORT_EVENT_MANAGER}
+      - EUREKA_URL=http://${NETWORK_IP_SERVICE_REGISTRY}:${NETWORK_PORT_SERVICE_REGISTRY}/eureka/
+      - UAA_SERVICE_NAME=${SERVICE_NAME_UAA_SERVICE}
+      - SECURITY_PROFILE=${SECURITY_PROFILE}
+      - POSTGRES_URL=jdbc:postgresql://${NETWORK_IP_POSTGRES}:${NETWORK_PORT_POSTGRES}/${ENV_POSTGRES_DB}
+      - POSTGRES_USERNAME=${ENV_POSTGRES_USER}
+      - POSTGRES_PASSWORD:${ENV_POSTGRES_PASSWORD}
+      - EVENTS_RETENTION_CONFIG_ENABLED=${EVENTS_RETENTION_CONFIG_ENABLED}
+      - EVENTS_RETENTION_LIFETIME_SECONDS=${EVENTS_RETENTION_LIFETIME_SECONDS}
+      - EVENTS_RETENTION_CLEANING_STARTS_FREQUENSY_SECONDS=${EVENTS_RETENTION_CLEANING_STARTS_FREQUENSY_SECONDS}
+    env_file:
+      - ./rabbitmq.env
+    entrypoint: ["dockerize",
+                 "-wait","tcp://${NETWORK_IP_POSTGRES}:${NETWORK_PORT_POSTGRES}",
+                 "-wait","tcp://${NETWORK_IP_RABBITMQ}:${NETWORK_PORT_RABBITMQ1}",
+                 "-wait","tcp://${NETWORK_IP_SERVICE_REGISTRY}:${NETWORK_PORT_SERVICE_REGISTRY}",
+                 "-wait","tcp://${NETWORK_IP_CACHE}:${NETWORK_PORT_CACHE}",
+                 "-wait","tcp://${NETWORK_IP_CATALOG}:${NETWORK_PORT_CATALOG}",
+                 "-wait","tcp://${NETWORK_IP_INVENTORY}:${NETWORK_PORT_INVENTORY}",
+                 "-wait","tcp://${NETWORK_IP_AGENT_ORCHESTRATOR}:${NETWORK_PORT_AGENT_ORCHESTRATOR}",
+                 "-wait","tcp://${NETWORK_IP_AGENT}:${NETWORK_PORT_AGENT}",
+                 "-timeout","${DOCKERIZE_WAIT_TIMEOUT}",
+                 "java",
+                 "-Dcom.sun.management.jmxremote",
+                 "-Dcom.sun.management.jmxremote.rmi.port=${NETWORK_VISUAL_VM_RMI_PORT_EVENT_MANAGER}",
+                 "-Dcom.sun.management.jmxremote.port=${NETWORK_VISUAL_VM_PORT_EVENT_MANAGER}",
+                 "-Dcom.sun.management.jmxremote.local.only=false",
+                 "-Dcom.sun.management.jmxremote.authenticate=false",
+                 "-Dcom.sun.management.jmxremote.ssl=false",
+                 "-Djava.rmi.server.hostname=${NETWORK_IP_DOCKER_HOST}",
+                 "-agentlib:jdwp=transport=dt_socket,address=${NETWORK_DEBUG_PORT_EVENT_MANAGER},server=y,suspend=n",
+                 "-XX:MaxRAM=1024m","-Xms256m", "-Xmx512m",
+                 "-jar", "./app.jar"]
+    restart: on-failure
+
+  # Polling
+  polling:
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_POLLING}
+    container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_POLLING}
+    hostname: ${SERVICE_NAME_POLLING}
+    ports:
+      - ${NETWORK_PORT_POLLING}:${NETWORK_PORT_POLLING}
+      - ${NETWORK_DEBUG_PORT_POLLING}:${NETWORK_DEBUG_PORT_POLLING}
+      - ${NETWORK_VISUAL_VM_PORT_POLLING}:${NETWORK_VISUAL_VM_PORT_POLLING}
+      - ${NETWORK_VISUAL_VM_RMI_PORT_POLLING}:${NETWORK_VISUAL_VM_RMI_PORT_POLLING}
+    networks:
+      edge:
+        ipv4_address: ${NETWORK_IP_POLLING}
+    depends_on:
+      - timescaledb
+      - rabbitmq
+      - service-registry
+      - uaa-service
+      - catalog
+      - inventory
+      - agent-orchestrator
+      - agent
+      - event-manager
+      - cache
+    environment:
+      - SERVER_PORT=${NETWORK_PORT_POLLING}
+      - EUREKA_URL=http://${NETWORK_IP_SERVICE_REGISTRY}:${NETWORK_PORT_SERVICE_REGISTRY}/eureka/
+      - UAA_SERVICE_NAME=${SERVICE_NAME_UAA_SERVICE}
+      - SECURITY_PROFILE=${SECURITY_PROFILE}
+      - POLLING_AUDIT_ENABLED=${ENV_POLLING_AUDIT_ENABLED}
+      - POSTGRES_URL=jdbc:postgresql://${NETWORK_IP_POSTGRES}:${NETWORK_PORT_POSTGRES}/${ENV_POSTGRES_DB}
+      - POSTGRES_USERNAME=${ENV_POSTGRES_USER}
+      - POSTGRES_PASSWORD=${ENV_POSTGRES_PASSWORD}
+    env_file:
+      - ./rabbitmq.env
+    entrypoint: ["dockerize",
+                 "-wait","tcp://${NETWORK_IP_POSTGRES}:${NETWORK_PORT_POSTGRES}",
+                 "-wait","tcp://${NETWORK_IP_RABBITMQ}:${NETWORK_PORT_RABBITMQ1}",
+                 "-wait","tcp://${NETWORK_IP_SERVICE_REGISTRY}:${NETWORK_PORT_SERVICE_REGISTRY}",
+                 "-wait","tcp://${NETWORK_IP_CACHE}:${NETWORK_PORT_CACHE}",
+                 "-wait","tcp://${NETWORK_IP_CATALOG}:${NETWORK_PORT_CATALOG}",
+                 "-wait","tcp://${NETWORK_IP_INVENTORY}:${NETWORK_PORT_INVENTORY}",
+                 "-wait","tcp://${NETWORK_IP_AGENT_ORCHESTRATOR}:${NETWORK_PORT_AGENT_ORCHESTRATOR}",
+                 "-wait","tcp://${NETWORK_IP_AGENT}:${NETWORK_PORT_AGENT}",
+                 "-wait","tcp://${NETWORK_IP_EVENT_MANAGER}:${NETWORK_PORT_EVENT_MANAGER}",
+                 "-timeout","${DOCKERIZE_WAIT_TIMEOUT}",
+                 "java",
+                 "-Dcom.sun.management.jmxremote",
+                 "-Dcom.sun.management.jmxremote.rmi.port=${NETWORK_VISUAL_VM_RMI_PORT_POLLING}",
+                 "-Dcom.sun.management.jmxremote.port=${NETWORK_VISUAL_VM_PORT_POLLING}",
+                 "-Dcom.sun.management.jmxremote.local.only=false",
+                 "-Dcom.sun.management.jmxremote.authenticate=false",
+                 "-Dcom.sun.management.jmxremote.ssl=false",
+                 "-Djava.rmi.server.hostname=${NETWORK_IP_DOCKER_HOST}",
+                 "-agentlib:jdwp=transport=dt_socket,address=${NETWORK_DEBUG_PORT_POLLING},server=y,suspend=n",
+                 "-XX:MaxRAM=256m","-jar","./app.jar"]
+    restart: on-failure
+
+  # Discovery
+  discovery:
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_DISCOVERY}
+    container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_DISCOVERY}
+    hostname: ${SERVICE_NAME_DISCOVERY}
+    ports:
+      - ${NETWORK_PORT_DISCOVERY}:${NETWORK_PORT_DISCOVERY}
+      - ${NETWORK_DEBUG_PORT_DISCOVERY}:${NETWORK_DEBUG_PORT_DISCOVERY}
+      - ${NETWORK_VISUAL_VM_PORT_DISCOVERY}:${NETWORK_VISUAL_VM_PORT_DISCOVERY}
+      - ${NETWORK_VISUAL_VM_RMI_PORT_DISCOVERY}:${NETWORK_VISUAL_VM_RMI_PORT_DISCOVERY}
+    networks:
+      edge:
+        ipv4_address: ${NETWORK_IP_DISCOVERY}
+    depends_on:
+      - timescaledb
+      - rabbitmq
+      - service-registry
+      - uaa-service
+      - catalog
+      - inventory
+      - agent-orchestrator
+      - agent
+      - event-manager
+      - polling
+      - cache
+    environment:
+      - SERVER_PORT=${NETWORK_PORT_DISCOVERY}
+      - EUREKA_URL=http://${NETWORK_IP_SERVICE_REGISTRY}:${NETWORK_PORT_SERVICE_REGISTRY}/eureka/
+      - UAA_SERVICE_NAME=${SERVICE_NAME_UAA_SERVICE}
+      - SECURITY_PROFILE=${SECURITY_PROFILE}
+      - POSTGRES_URL=jdbc:postgresql://${NETWORK_IP_POSTGRES}:${NETWORK_PORT_POSTGRES}/${ENV_POSTGRES_DB}
+      - POSTGRES_USERNAME=${ENV_POSTGRES_USER}
+      - POSTGRES_PASSWORD=${ENV_POSTGRES_PASSWORD}
+    env_file:
+      - ./rabbitmq.env
+    entrypoint: ["dockerize",
+                 "-wait","tcp://${NETWORK_IP_POSTGRES}:${NETWORK_PORT_POSTGRES}",
+                 "-wait","tcp://${NETWORK_IP_RABBITMQ}:${NETWORK_PORT_RABBITMQ1}",
+                 "-wait","tcp://${NETWORK_IP_SERVICE_REGISTRY}:${NETWORK_PORT_SERVICE_REGISTRY}",
+                 "-wait","tcp://${NETWORK_IP_CACHE}:${NETWORK_PORT_CACHE}",
+                 "-wait","tcp://${NETWORK_IP_CATALOG}:${NETWORK_PORT_CATALOG}",
+                 "-wait","tcp://${NETWORK_IP_INVENTORY}:${NETWORK_PORT_INVENTORY}",
+                 "-wait","tcp://${NETWORK_IP_AGENT_ORCHESTRATOR}:${NETWORK_PORT_AGENT_ORCHESTRATOR}",
+                 "-wait","tcp://${NETWORK_IP_AGENT}:${NETWORK_PORT_AGENT}",
+                 "-wait","tcp://${NETWORK_IP_EVENT_MANAGER}:${NETWORK_PORT_EVENT_MANAGER}",
+                 "-wait","tcp://${NETWORK_IP_POLLING}:${NETWORK_PORT_POLLING}",
+                 "-timeout","${DOCKERIZE_WAIT_TIMEOUT}",
+                 "java",
+                 "-Dcom.sun.management.jmxremote",
+                 "-Dcom.sun.management.jmxremote.rmi.port=${NETWORK_VISUAL_VM_RMI_PORT_DISCOVERY}",
+                 "-Dcom.sun.management.jmxremote.port=${NETWORK_VISUAL_VM_PORT_DISCOVERY}",
+                 "-Dcom.sun.management.jmxremote.local.only=false",
+                 "-Dcom.sun.management.jmxremote.authenticate=false",
+                 "-Dcom.sun.management.jmxremote.ssl=false",
+                 "-Djava.rmi.server.hostname=${NETWORK_IP_DOCKER_HOST}",
+                 "-agentlib:jdwp=transport=dt_socket,address=${NETWORK_DEBUG_PORT_DISCOVERY},server=y,suspend=n",
+                 "-XX:MaxRAM=256m","-jar","./app.jar"]
+    restart: on-failure
+
+  # Configuration Update
+  configuration-update:
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_CONFIGURATION_UPDATE}
+    container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_CONFIGURATION_UPDATE}
+    hostname: ${SERVICE_NAME_CONFIGURATION_UPDATE}
+    ports:
+      - ${NETWORK_PORT_CONFIGURATION_UPDATE}:${NETWORK_PORT_CONFIGURATION_UPDATE}
+      - ${NETWORK_DEBUG_PORT_CONFIGURATION_UPDATE}:${NETWORK_DEBUG_PORT_CONFIGURATION_UPDATE}
+      - ${NETWORK_VISUAL_VM_PORT_CONFIGURATION_UPDATE}:${NETWORK_VISUAL_VM_PORT_CONFIGURATION_UPDATE}
+      - ${NETWORK_VISUAL_VM_RMI_PORT_CONFIGURATION_UPDATE}:${NETWORK_VISUAL_VM_RMI_PORT_CONFIGURATION_UPDATE}
+    networks:
+      edge:
+        ipv4_address: ${NETWORK_IP_CONFIGURATION_UPDATE}
+    depends_on:
+      - timescaledb
+      - rabbitmq
+      - service-registry
+      - uaa-service
+      - catalog
+      - inventory
+      - agent-orchestrator
+      - agent
+      - event-manager
+      - polling
+      - discovery
+      - cache
+    environment:
+      - SERVER_PORT=${NETWORK_PORT_CONFIGURATION_UPDATE}
+      - EUREKA_URL=http://${NETWORK_IP_SERVICE_REGISTRY}:${NETWORK_PORT_SERVICE_REGISTRY}/eureka/
+      - UAA_SERVICE_NAME=${SERVICE_NAME_UAA_SERVICE}
+      - SECURITY_PROFILE=${SECURITY_PROFILE}
+      - POSTGRES_URL=jdbc:postgresql://${NETWORK_IP_POSTGRES}:${NETWORK_PORT_POSTGRES}/${ENV_POSTGRES_DB}
+      - POSTGRES_USERNAME=${ENV_POSTGRES_USER}
+      - POSTGRES_PASSWORD=${ENV_POSTGRES_PASSWORD}
+    env_file:
+      - ./rabbitmq.env
+    entrypoint: ["dockerize",
+                 "-wait","tcp://${NETWORK_IP_POSTGRES}:${NETWORK_PORT_POSTGRES}",
+                 "-wait","tcp://${NETWORK_IP_RABBITMQ}:${NETWORK_PORT_RABBITMQ1}",
+                 "-wait","tcp://${NETWORK_IP_SERVICE_REGISTRY}:${NETWORK_PORT_SERVICE_REGISTRY}",
+                 "-wait","tcp://${NETWORK_IP_CACHE}:${NETWORK_PORT_CACHE}",
+                 "-wait","tcp://${NETWORK_IP_CATALOG}:${NETWORK_PORT_CATALOG}",
+                 "-wait","tcp://${NETWORK_IP_INVENTORY}:${NETWORK_PORT_INVENTORY}",
+                 "-wait","tcp://${NETWORK_IP_AGENT_ORCHESTRATOR}:${NETWORK_PORT_AGENT_ORCHESTRATOR}",
+                 "-wait","tcp://${NETWORK_IP_AGENT}:${NETWORK_PORT_AGENT}",
+                 "-wait","tcp://${NETWORK_IP_EVENT_MANAGER}:${NETWORK_PORT_EVENT_MANAGER}",
+                 "-wait","tcp://${NETWORK_IP_POLLING}:${NETWORK_PORT_POLLING}",
+                 "-wait","tcp://${NETWORK_IP_DISCOVERY}:${NETWORK_PORT_DISCOVERY}",
+                 "-timeout","${DOCKERIZE_WAIT_TIMEOUT}",
+                 "java",
+                 "-Dcom.sun.management.jmxremote",
+                 "-Dcom.sun.management.jmxremote.rmi.port=${NETWORK_VISUAL_VM_RMI_PORT_CONFIGURATION_UPDATE}",
+                 "-Dcom.sun.management.jmxremote.port=${NETWORK_VISUAL_VM_PORT_CONFIGURATION_UPDATE}",
+                 "-Dcom.sun.management.jmxremote.local.only=false",
+                 "-Dcom.sun.management.jmxremote.authenticate=false",
+                 "-Dcom.sun.management.jmxremote.ssl=false",
+                 "-Djava.rmi.server.hostname=${NETWORK_IP_DOCKER_HOST}",
+                 "-agentlib:jdwp=transport=dt_socket,address=${NETWORK_DEBUG_PORT_CONFIGURATION_UPDATE},server=y,suspend=n",
+                 "-XX:MaxRAM=256m","-jar","./app.jar"]
+    restart: on-failure
+
+  # Firmware Update
+  firmware-update:
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_FIRMWARE_UPDATE}
+    container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_FIRMWARE_UPDATE}
+    hostname: ${SERVICE_NAME_FIRMWARE_UPDATE}
+    ports:
+      - ${NETWORK_PORT_FIRMWARE_UPDATE}:${NETWORK_PORT_FIRMWARE_UPDATE}
+      - ${NETWORK_DEBUG_PORT_FIRMWARE_UPDATE}:${NETWORK_DEBUG_PORT_FIRMWARE_UPDATE}
+      - ${NETWORK_VISUAL_VM_PORT_FIRMWARE_UPDATE}:${NETWORK_VISUAL_VM_PORT_FIRMWARE_UPDATE}
+      - ${NETWORK_VISUAL_VM_RMI_PORT_FIRMWARE_UPDATE}:${NETWORK_VISUAL_VM_RMI_PORT_FIRMWARE_UPDATE}
+    networks:
+      edge:
+        ipv4_address: ${NETWORK_IP_FIRMWARE_UPDATE}
+    depends_on:
+      - timescaledb
+      - rabbitmq
+      - service-registry
+      - uaa-service
+      - catalog
+      - inventory
+      - agent-orchestrator
+      - agent
+      - event-manager
+      - polling
+      - discovery
+      - configuration-update
+      - cache
+    environment:
+      - SERVER_PORT=${NETWORK_PORT_FIRMWARE_UPDATE}
+      - EUREKA_URL=http://${NETWORK_IP_SERVICE_REGISTRY}:${NETWORK_PORT_SERVICE_REGISTRY}/eureka/
+      - UAA_SERVICE_NAME=${SERVICE_NAME_UAA_SERVICE}
+      - SECURITY_PROFILE=${SECURITY_PROFILE}
+      - POSTGRES_URL=jdbc:postgresql://${NETWORK_IP_POSTGRES}:${NETWORK_PORT_POSTGRES}/${ENV_POSTGRES_DB}
+      - POSTGRES_USERNAME=${ENV_POSTGRES_USER}
+      - POSTGRES_PASSWORD=${ENV_POSTGRES_PASSWORD}
+    env_file:
+      - ./rabbitmq.env
+    entrypoint: ["dockerize",
+                 "-wait","tcp://${NETWORK_IP_POSTGRES}:${NETWORK_PORT_POSTGRES}",
+                 "-wait","tcp://${NETWORK_IP_RABBITMQ}:${NETWORK_PORT_RABBITMQ1}",
+                 "-wait","tcp://${NETWORK_IP_SERVICE_REGISTRY}:${NETWORK_PORT_SERVICE_REGISTRY}",
+                 "-wait","tcp://${NETWORK_IP_CACHE}:${NETWORK_PORT_CACHE}",
+                 "-wait","tcp://${NETWORK_IP_CATALOG}:${NETWORK_PORT_CATALOG}",
+                 "-wait","tcp://${NETWORK_IP_INVENTORY}:${NETWORK_PORT_INVENTORY}",
+                 "-wait","tcp://${NETWORK_IP_AGENT_ORCHESTRATOR}:${NETWORK_PORT_AGENT_ORCHESTRATOR}",
+                 "-wait","tcp://${NETWORK_IP_AGENT}:${NETWORK_PORT_AGENT}",
+                 "-wait","tcp://${NETWORK_IP_EVENT_MANAGER}:${NETWORK_PORT_EVENT_MANAGER}",
+                 "-wait","tcp://${NETWORK_IP_POLLING}:${NETWORK_PORT_POLLING}",
+                 "-wait","tcp://${NETWORK_IP_DISCOVERY}:${NETWORK_PORT_DISCOVERY}",
+                 "-wait","tcp://${NETWORK_IP_CONFIGURATION_UPDATE}:${NETWORK_PORT_CONFIGURATION_UPDATE}",
+                 "-timeout","${DOCKERIZE_WAIT_TIMEOUT}",
+                 "java",
+                 "-Dcom.sun.management.jmxremote",
+                 "-Dcom.sun.management.jmxremote.rmi.port=${NETWORK_VISUAL_VM_RMI_PORT_FIRMWARE_UPDATE}",
+                 "-Dcom.sun.management.jmxremote.port=${NETWORK_VISUAL_VM_PORT_FIRMWARE_UPDATE}",
+                 "-Dcom.sun.management.jmxremote.local.only=false",
+                 "-Dcom.sun.management.jmxremote.authenticate=false",
+                 "-Dcom.sun.management.jmxremote.ssl=false",
+                 "-Djava.rmi.server.hostname=${NETWORK_IP_DOCKER_HOST}",
+                 "-agentlib:jdwp=transport=dt_socket,address=${NETWORK_DEBUG_PORT_FIRMWARE_UPDATE},server=y,suspend=n",
+                 "-XX:MaxRAM=256m","-jar","./app.jar"]
+    restart: on-failure
+
+  # Cloud Connector
+  cloud-connector:
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_CLOUD_CONNECTOR}
+    container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_CLOUD_CONNECTOR}
+    hostname: ${SERVICE_NAME_CLOUD_CONNECTOR}
+    ports:
+      - ${NETWORK_PORT_CLOUD_CONNECTOR}:${NETWORK_PORT_CLOUD_CONNECTOR}
+      - ${NETWORK_DEBUG_PORT_CLOUD_CONNECTOR}:${NETWORK_DEBUG_PORT_CLOUD_CONNECTOR}
+      - ${NETWORK_VISUAL_VM_PORT_CLOUD_CONNECTOR}:${NETWORK_VISUAL_VM_PORT_CLOUD_CONNECTOR}
+      - ${NETWORK_VISUAL_VM_RMI_PORT_CLOUD_CONNECTOR}:${NETWORK_VISUAL_VM_RMI_PORT_CLOUD_CONNECTOR}
+    networks:
+      edge:
+        ipv4_address: ${NETWORK_IP_CLOUD_CONNECTOR}
+    depends_on:
+      - timescaledb
+      - rabbitmq
+      - service-registry
+      - uaa-service
+      - catalog
+      - inventory
+      - agent-orchestrator
+      - agent
+      - event-manager
+      - polling
+      - discovery
+      - configuration-update
+      - firmware-update
+      - cache
+    environment:
+      - SERVER_PORT=${NETWORK_PORT_CLOUD_CONNECTOR}
+      - EUREKA_URL=http://${NETWORK_IP_SERVICE_REGISTRY}:${NETWORK_PORT_SERVICE_REGISTRY}/eureka/
+      - ANALYTICS_URL=http://${NETWORK_IP_ANALYTICS}:${NETWORK_PORT_ANALYTICS}
+      - UAA_SERVICE_NAME=${SERVICE_NAME_UAA_SERVICE}
+      - SECURITY_PROFILE=${SECURITY_PROFILE}
+      - CLOUD_CONNECTOR_AUDIT_ENABLED=${ENV_CLOUD_CONNECTOR_AUDIT_ENABLED}
+      - POSTGRES_URL=jdbc:postgresql://${NETWORK_IP_POSTGRES}:${NETWORK_PORT_POSTGRES}/${ENV_POSTGRES_DB}
+      - POSTGRES_USERNAME=${ENV_POSTGRES_USER}
+      - POSTGRES_PASSWORD=${ENV_POSTGRES_PASSWORD}
+    env_file:
+      - ./rabbitmq.env
+    entrypoint: ["dockerize",
+                 "-wait","tcp://${NETWORK_IP_POSTGRES}:${NETWORK_PORT_POSTGRES}",
+                 "-wait","tcp://${NETWORK_IP_RABBITMQ}:${NETWORK_PORT_RABBITMQ1}",
+                 "-wait","tcp://${NETWORK_IP_SERVICE_REGISTRY}:${NETWORK_PORT_SERVICE_REGISTRY}",
+                 "-wait","tcp://${NETWORK_IP_CACHE}:${NETWORK_PORT_CACHE}",
+                 "-wait","tcp://${NETWORK_IP_CATALOG}:${NETWORK_PORT_CATALOG}",
+                 "-wait","tcp://${NETWORK_IP_INVENTORY}:${NETWORK_PORT_INVENTORY}",
+                 "-wait","tcp://${NETWORK_IP_AGENT_ORCHESTRATOR}:${NETWORK_PORT_AGENT_ORCHESTRATOR}",
+                 "-wait","tcp://${NETWORK_IP_AGENT}:${NETWORK_PORT_AGENT}",
+                 "-wait","tcp://${NETWORK_IP_EVENT_MANAGER}:${NETWORK_PORT_EVENT_MANAGER}",
+                 "-wait","tcp://${NETWORK_IP_POLLING}:${NETWORK_PORT_POLLING}",
+                 "-wait","tcp://${NETWORK_IP_DISCOVERY}:${NETWORK_PORT_DISCOVERY}",
+                 "-wait","tcp://${NETWORK_IP_CONFIGURATION_UPDATE}:${NETWORK_PORT_CONFIGURATION_UPDATE}",
+                 "-wait","tcp://${NETWORK_IP_FIRMWARE_UPDATE}:${NETWORK_PORT_FIRMWARE_UPDATE}",
+                 "-timeout","${DOCKERIZE_WAIT_TIMEOUT}",
+                 "java",
+                 "-Dcom.sun.management.jmxremote",
+                 "-Dcom.sun.management.jmxremote.rmi.port=${NETWORK_VISUAL_VM_RMI_PORT_CLOUD_CONNECTOR}",
+                 "-Dcom.sun.management.jmxremote.port=${NETWORK_VISUAL_VM_PORT_CLOUD_CONNECTOR}",
+                 "-Dcom.sun.management.jmxremote.local.only=false",
+                 "-Dcom.sun.management.jmxremote.authenticate=false",
+                 "-Dcom.sun.management.jmxremote.ssl=false",
+                 "-Djava.rmi.server.hostname=${NETWORK_IP_DOCKER_HOST}",
+                 "-agentlib:jdwp=transport=dt_socket,address=${NETWORK_DEBUG_PORT_CLOUD_CONNECTOR},server=y,suspend=n",
+                 "-XX:MaxRAM=256m","-jar","./app.jar"]
+    restart: on-failure
+
+  # Process Manager
+  process-manager:
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_PROCESS_MANAGER}
+    container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_PROCESS_MANAGER}
+    hostname: ${SERVICE_NAME_PROCESS_MANAGER}
+    ports:
+      - ${NETWORK_PORT_PROCESS_MANAGER}:${NETWORK_PORT_PROCESS_MANAGER}
+      - ${NETWORK_DEBUG_PORT_PROCESS_MANAGER}:${NETWORK_DEBUG_PORT_PROCESS_MANAGER}
+      - ${NETWORK_VISUAL_VM_PORT_PROCESS_MANAGER}:${NETWORK_VISUAL_VM_PORT_PROCESS_MANAGER}
+      - ${NETWORK_VISUAL_VM_RMI_PORT_PROCESS_MANAGER}:${NETWORK_VISUAL_VM_RMI_PORT_PROCESS_MANAGER}
+    networks:
+      edge:
+        ipv4_address: ${NETWORK_IP_PROCESS_MANAGER}
+    depends_on:
+      - timescaledb
+      - rabbitmq
+      - service-registry
+      - uaa-service
+      - catalog
+      - inventory
+      - agent-orchestrator
+      - agent
+      - event-manager
+      - polling
+      - discovery
+      - configuration-update
+      - firmware-update
+      - cloud-connector
+      - cache
+    environment:
+      - SERVER_PORT=${NETWORK_PORT_PROCESS_MANAGER}
+      - EUREKA_URL=http://${NETWORK_IP_SERVICE_REGISTRY}:${NETWORK_PORT_SERVICE_REGISTRY}/eureka/
+      - UAA_SERVICE_NAME=${SERVICE_NAME_UAA_SERVICE}
+      - SECURITY_PROFILE=${SECURITY_PROFILE}
+      - POSTGRES_URL=jdbc:postgresql://${NETWORK_IP_POSTGRES}:${NETWORK_PORT_POSTGRES}/${ENV_POSTGRES_DB}
+      - POSTGRES_USERNAME=${ENV_POSTGRES_USER}
+      - POSTGRES_PASSWORD=${ENV_POSTGRES_PASSWORD}
+    env_file:
+      - ./rabbitmq.env
+    entrypoint: ["dockerize",
+                 "-wait","tcp://${NETWORK_IP_POSTGRES}:${NETWORK_PORT_POSTGRES}",
+                 "-wait","tcp://${NETWORK_IP_RABBITMQ}:${NETWORK_PORT_RABBITMQ1}",
+                 "-wait","tcp://${NETWORK_IP_SERVICE_REGISTRY}:${NETWORK_PORT_SERVICE_REGISTRY}",
+                 "-wait","tcp://${NETWORK_IP_CACHE}:${NETWORK_PORT_CACHE}",
+                 "-wait","tcp://${NETWORK_IP_CATALOG}:${NETWORK_PORT_CATALOG}",
+                 "-wait","tcp://${NETWORK_IP_INVENTORY}:${NETWORK_PORT_INVENTORY}",
+                 "-wait","tcp://${NETWORK_IP_AGENT_ORCHESTRATOR}:${NETWORK_PORT_AGENT_ORCHESTRATOR}",
+                 "-wait","tcp://${NETWORK_IP_AGENT}:${NETWORK_PORT_AGENT}",
+                 "-wait","tcp://${NETWORK_IP_EVENT_MANAGER}:${NETWORK_PORT_EVENT_MANAGER}",
+                 "-wait","tcp://${NETWORK_IP_POLLING}:${NETWORK_PORT_POLLING}",
+                 "-wait","tcp://${NETWORK_IP_DISCOVERY}:${NETWORK_PORT_DISCOVERY}",
+                 "-wait","tcp://${NETWORK_IP_CONFIGURATION_UPDATE}:${NETWORK_PORT_CONFIGURATION_UPDATE}",
+                 "-wait","tcp://${NETWORK_IP_FIRMWARE_UPDATE}:${NETWORK_PORT_FIRMWARE_UPDATE}",
+                 "-wait","tcp://${NETWORK_IP_CLOUD_CONNECTOR}:${NETWORK_PORT_CLOUD_CONNECTOR}",
+                 "-timeout","${DOCKERIZE_WAIT_TIMEOUT}",
+                 "java",
+                 "-Dcom.sun.management.jmxremote",
+                 "-Dcom.sun.management.jmxremote.rmi.port=${NETWORK_VISUAL_VM_RMI_PORT_PROCESS_MANAGER}",
+                 "-Dcom.sun.management.jmxremote.port=${NETWORK_VISUAL_VM_PORT_PROCESS_MANAGER}",
+                 "-Dcom.sun.management.jmxremote.local.only=false",
+                 "-Dcom.sun.management.jmxremote.authenticate=false",
+                 "-Dcom.sun.management.jmxremote.ssl=false",
+                 "-Djava.rmi.server.hostname=${NETWORK_IP_DOCKER_HOST}",
+                 "-agentlib:jdwp=transport=dt_socket,address=${NETWORK_DEBUG_PORT_PROCESS_MANAGER},server=y,suspend=n",
+                 "-XX:MaxRAM=256m","-jar","./app.jar"]
+    restart: on-failure
+
+  # Scheduler
+  scheduler:
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_SCHEDULER}
+    container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_SCHEDULER}
+    hostname: ${SERVICE_NAME_SCHEDULER}
+    ports:
+      - ${NETWORK_PORT_SCHEDULER}:${NETWORK_PORT_SCHEDULER}
+      - ${NETWORK_DEBUG_PORT_SCHEDULER}:${NETWORK_DEBUG_PORT_SCHEDULER}
+      - ${NETWORK_VISUAL_VM_PORT_SCHEDULER}:${NETWORK_VISUAL_VM_PORT_SCHEDULER}
+      - ${NETWORK_VISUAL_VM_RMI_PORT_SCHEDULER}:${NETWORK_VISUAL_VM_RMI_PORT_SCHEDULER}
+    networks:
+      edge:
+        ipv4_address: ${NETWORK_IP_SCHEDULER}
+    depends_on:
+      - timescaledb
+      - rabbitmq
+      - service-registry
+      - uaa-service
+      - cache
+    environment:
+      - SERVER_PORT=${NETWORK_PORT_SCHEDULER}
+      - EUREKA_URL=http://${NETWORK_IP_SERVICE_REGISTRY}:${NETWORK_PORT_SERVICE_REGISTRY}/eureka/
+      - UAA_TOKEN_URL=http://${NETWORK_IP_UAA_SERVICE}:${NETWORK_PORT_UAA_SERVICE}/oauth/token
+      - UAA_AUTHORIZE_URL=http://${NETWORK_IP_UAA_SERVICE}:${NETWORK_PORT_UAA_SERVICE}/oauth/authorize
+      - SECURITY_PROFILE=${SECURITY_PROFILE}
+      - POSTGRES_URL=jdbc:postgresql://${NETWORK_IP_POSTGRES}:${NETWORK_PORT_POSTGRES}/${ENV_POSTGRES_DB}
+      - POSTGRES_USERNAME=${ENV_POSTGRES_USER}
+      - POSTGRES_PASSWORD=${ENV_POSTGRES_PASSWORD}
+    env_file:
+      - ./rabbitmq.env
+    entrypoint: ["dockerize",
+                 "-wait","tcp://${NETWORK_IP_POSTGRES}:${NETWORK_PORT_POSTGRES}",
+                 "-wait","tcp://${NETWORK_IP_RABBITMQ}:${NETWORK_PORT_RABBITMQ1}",
+                 "-wait","tcp://${NETWORK_IP_SERVICE_REGISTRY}:${NETWORK_PORT_SERVICE_REGISTRY}",
+                 "-wait","tcp://${NETWORK_IP_UAA_SERVICE}:${NETWORK_PORT_UAA_SERVICE}",
+                 "-wait","tcp://${NETWORK_IP_CACHE}:${NETWORK_PORT_CACHE}",
+                 "-timeout","${DOCKERIZE_WAIT_TIMEOUT}",
+                 "java",
+                 "-Dcom.sun.management.jmxremote",
+                 "-Dcom.sun.management.jmxremote.rmi.port=${NETWORK_VISUAL_VM_RMI_PORT_SCHEDULER}",
+                 "-Dcom.sun.management.jmxremote.port=${NETWORK_VISUAL_VM_PORT_SCHEDULER}",
+                 "-Dcom.sun.management.jmxremote.local.only=false",
+                 "-Dcom.sun.management.jmxremote.authenticate=false",
+                 "-Dcom.sun.management.jmxremote.ssl=false",
+                 "-Djava.rmi.server.hostname=${NETWORK_IP_DOCKER_HOST}",
+                 "-agentlib:jdwp=transport=dt_socket,address=${NETWORK_DEBUG_PORT_SCHEDULER},server=y,suspend=n",
+                 "-XX:MaxRAM=256m","-jar","./app.jar"]
+    restart: on-failure
+
+  # Notification
+  notification:
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_NOTIFICATION}
+    container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_NOTIFICATION}
+    hostname: ${SERVICE_NAME_NOTIFICATION}
+    ports:
+      - ${NETWORK_PORT_NOTIFICATION}:${NETWORK_PORT_NOTIFICATION}
+      - ${NETWORK_DEBUG_PORT_NOTIFICATION}:${NETWORK_DEBUG_PORT_NOTIFICATION}
+      - ${NETWORK_VISUAL_VM_PORT_NOTIFICATION}:${NETWORK_VISUAL_VM_PORT_NOTIFICATION}
+      - ${NETWORK_VISUAL_VM_RMI_PORT_NOTIFICATION}:${NETWORK_VISUAL_VM_RMI_PORT_NOTIFICATION}
+    networks:
+      edge:
+        ipv4_address: ${NETWORK_IP_NOTIFICATION}
+    depends_on:
+      - timescaledb
+      - rabbitmq
+      - service-registry
+      - uaa-service
+      - cache
+    environment:
+      - SERVER_PORT=${NETWORK_PORT_NOTIFICATION}
+      - EUREKA_URL=http://${NETWORK_IP_SERVICE_REGISTRY}:${NETWORK_PORT_SERVICE_REGISTRY}/eureka/
+      - UAA_SERVICE_NAME=${SERVICE_NAME_UAA_SERVICE}
+      - SECURITY_PROFILE=${SECURITY_PROFILE}
+      - POSTGRES_URL=jdbc:postgresql://${NETWORK_IP_POSTGRES}:${NETWORK_PORT_POSTGRES}/${ENV_POSTGRES_DB}
+      - POSTGRES_USERNAME=${ENV_POSTGRES_USER}
+      - POSTGRES_PASSWORD=${ENV_POSTGRES_PASSWORD}
+    env_file:
+      - ./rabbitmq.env
+    entrypoint: ["dockerize",
+                 "-wait","tcp://${NETWORK_IP_POSTGRES}:${NETWORK_PORT_POSTGRES}",
+                 "-wait","tcp://${NETWORK_IP_RABBITMQ}:${NETWORK_PORT_RABBITMQ1}",
+                 "-wait","tcp://${NETWORK_IP_SERVICE_REGISTRY}:${NETWORK_PORT_SERVICE_REGISTRY}",
+                 "-wait","tcp://${NETWORK_IP_UAA_SERVICE}:${NETWORK_PORT_UAA_SERVICE}",
+                 "-wait","tcp://${NETWORK_IP_CACHE}:${NETWORK_PORT_CACHE}",
+                 "-timeout","${DOCKERIZE_WAIT_TIMEOUT}",
+                 "java",
+                 "-Dcom.sun.management.jmxremote",
+                 "-Dcom.sun.management.jmxremote.rmi.port=${NETWORK_VISUAL_VM_RMI_PORT_NOTIFICATION}",
+                 "-Dcom.sun.management.jmxremote.port=${NETWORK_VISUAL_VM_PORT_NOTIFICATION}",
+                 "-Dcom.sun.management.jmxremote.local.only=false",
+                 "-Dcom.sun.management.jmxremote.authenticate=false",
+                 "-Dcom.sun.management.jmxremote.ssl=false",
+                 "-Djava.rmi.server.hostname=${NETWORK_IP_DOCKER_HOST}",
+                 "-agentlib:jdwp=transport=dt_socket,address=${NETWORK_DEBUG_PORT_NOTIFICATION},server=y,suspend=n",
+                 "-XX:MaxRAM=256m","-jar","./app.jar"]
+    restart: on-failure
+
+  # Audit Logger
+  audit-logger:
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_AUDIT_LOGGER}
+    container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_AUDIT_LOGGER}
+    hostname: ${SERVICE_NAME_AUDIT_LOGGER}
+    ports:
+      - ${NETWORK_PORT_AUDIT_LOGGER}:${NETWORK_PORT_AUDIT_LOGGER}
+      - ${NETWORK_DEBUG_PORT_AUDIT_LOGGER}:${NETWORK_DEBUG_PORT_AUDIT_LOGGER}
+      - ${NETWORK_VISUAL_VM_PORT_AUDIT_LOGGER}:${NETWORK_VISUAL_VM_PORT_AUDIT_LOGGER}
+      - ${NETWORK_VISUAL_VM_RMI_PORT_AUDIT_LOGGER}:${NETWORK_VISUAL_VM_RMI_PORT_AUDIT_LOGGER}
+    networks:
+      edge:
+        ipv4_address: ${NETWORK_IP_AUDIT_LOGGER}
+    depends_on:
+      - timescaledb
+      - rabbitmq
+      - service-registry
+      - uaa-service
+    environment:
+      - SERVER_PORT=${NETWORK_PORT_AUDIT_LOGGER}
+      - EUREKA_URL=http://${NETWORK_IP_SERVICE_REGISTRY}:${NETWORK_PORT_SERVICE_REGISTRY}/eureka/
+      - UAA_SERVICE_NAME=${SERVICE_NAME_UAA_SERVICE}
+      - SECURITY_PROFILE=${SECURITY_PROFILE}
+      - POSTGRES_URL=jdbc:postgresql://${NETWORK_IP_POSTGRES}:${NETWORK_PORT_POSTGRES}/${ENV_POSTGRES_DB}
+      - POSTGRES_USERNAME=${ENV_POSTGRES_USER}
+      - POSTGRES_PASSWORD=${ENV_POSTGRES_PASSWORD}
+    env_file:
+      - ./rabbitmq.env
+    entrypoint: ["dockerize",
+                 "-wait","tcp://${NETWORK_IP_POSTGRES}:${NETWORK_PORT_POSTGRES}",
+                 "-wait","tcp://${NETWORK_IP_RABBITMQ}:${NETWORK_PORT_RABBITMQ1}",
+                 "-wait","tcp://${NETWORK_IP_SERVICE_REGISTRY}:${NETWORK_PORT_SERVICE_REGISTRY}",
+                 "-wait","tcp://${NETWORK_IP_UAA_SERVICE}:${NETWORK_PORT_UAA_SERVICE}",
+                 "-timeout","${DOCKERIZE_WAIT_TIMEOUT}",
+                 "java",
+                 "-Dcom.sun.management.jmxremote",
+                 "-Dcom.sun.management.jmxremote.rmi.port=${NETWORK_VISUAL_VM_RMI_PORT_AUDIT_LOGGER}",
+                 "-Dcom.sun.management.jmxremote.port=${NETWORK_VISUAL_VM_PORT_AUDIT_LOGGER}",
+                 "-Dcom.sun.management.jmxremote.local.only=false",
+                 "-Dcom.sun.management.jmxremote.authenticate=false",
+                 "-Dcom.sun.management.jmxremote.ssl=false",
+                 "-Djava.rmi.server.hostname=${NETWORK_IP_DOCKER_HOST}",
+                 "-agentlib:jdwp=transport=dt_socket,address=${NETWORK_DEBUG_PORT_AUDIT_LOGGER},server=y,suspend=n",
+                 "-XX:MaxRAM=256m","-jar","./app.jar"]
+    restart: on-failure
+
+  # API Gateway
+  api-gateway:
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_API_GATEWAY}
+    container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_API_GATEWAY}
+    hostname: ${SERVICE_NAME_API_GATEWAY}
+    ports:
+      - ${NETWORK_PORT_API_GATEWAY}:${NETWORK_PORT_API_GATEWAY}
+      - ${NETWORK_DEBUG_PORT_API_GATEWAY}:${NETWORK_DEBUG_PORT_API_GATEWAY}
+      - ${NETWORK_VISUAL_VM_PORT_API_GATEWAY}:${NETWORK_VISUAL_VM_PORT_API_GATEWAY}
+      - ${NETWORK_VISUAL_VM_RMI_PORT_API_GATEWAY}:${NETWORK_VISUAL_VM_RMI_PORT_API_GATEWAY}
+    networks:
+      edge:
+        ipv4_address: ${NETWORK_IP_API_GATEWAY}
+    depends_on:
+      - timescaledb
+      - rabbitmq
+      - service-registry
+      - uaa-service
+      - catalog
+      - inventory
+      - agent-orchestrator
+      - agent
+      - event-manager
+      - polling
+      - discovery
+      - configuration-update
+      - firmware-update
+      - cloud-connector
+      - process-manager
+      - scheduler
+      - notification
+      - audit-logger
+      - cache
+    environment:
+      - SERVER_PORT=${NETWORK_PORT_API_GATEWAY}
+      - EUREKA_URL=http://${NETWORK_IP_SERVICE_REGISTRY}:${NETWORK_PORT_SERVICE_REGISTRY}/eureka/
+      - UAA_SERVICE_NAME=${SERVICE_NAME_UAA_SERVICE}
+      - SECURITY_PROFILE=${SECURITY_PROFILE}
+      - POSTGRES_URL=jdbc:postgresql://${NETWORK_IP_POSTGRES}:${NETWORK_PORT_POSTGRES}/${ENV_POSTGRES_DB}
+      - POSTGRES_USERNAME=${ENV_POSTGRES_USER}
+      - POSTGRES_PASSWORD=${ENV_POSTGRES_PASSWORD}
+    entrypoint: ["dockerize",
+                 "-wait","tcp://${NETWORK_IP_POSTGRES}:${NETWORK_PORT_POSTGRES}",
+                 "-wait","tcp://${NETWORK_IP_RABBITMQ}:${NETWORK_PORT_RABBITMQ1}",
+                 "-wait","tcp://${NETWORK_IP_SERVICE_REGISTRY}:${NETWORK_PORT_SERVICE_REGISTRY}",
+                 "-wait","tcp://${NETWORK_IP_CACHE}:${NETWORK_PORT_CACHE}",
+                 "-wait","tcp://${NETWORK_IP_CATALOG}:${NETWORK_PORT_CATALOG}",
+                 "-wait","tcp://${NETWORK_IP_INVENTORY}:${NETWORK_PORT_INVENTORY}",
+                 "-wait","tcp://${NETWORK_IP_AGENT_ORCHESTRATOR}:${NETWORK_PORT_AGENT_ORCHESTRATOR}",
+                 "-wait","tcp://${NETWORK_IP_AGENT}:${NETWORK_PORT_AGENT}",
+                 "-wait","tcp://${NETWORK_IP_EVENT_MANAGER}:${NETWORK_PORT_EVENT_MANAGER}",
+                 "-wait","tcp://${NETWORK_IP_POLLING}:${NETWORK_PORT_POLLING}",
+                 "-wait","tcp://${NETWORK_IP_DISCOVERY}:${NETWORK_PORT_DISCOVERY}",
+                 "-wait","tcp://${NETWORK_IP_CONFIGURATION_UPDATE}:${NETWORK_PORT_CONFIGURATION_UPDATE}",
+                 "-wait","tcp://${NETWORK_IP_FIRMWARE_UPDATE}:${NETWORK_PORT_FIRMWARE_UPDATE}",
+                 "-wait","tcp://${NETWORK_IP_CLOUD_CONNECTOR}:${NETWORK_PORT_CLOUD_CONNECTOR}",
+                 "-wait","tcp://${NETWORK_IP_PROCESS_MANAGER}:${NETWORK_PORT_PROCESS_MANAGER}",
+                 "-wait","tcp://${NETWORK_IP_SCHEDULER}:${NETWORK_PORT_SCHEDULER}",
+                 "-wait","tcp://${NETWORK_IP_NOTIFICATION}:${NETWORK_PORT_NOTIFICATION}",
+                 "-wait","tcp://${NETWORK_IP_AUDIT_LOGGER}:${NETWORK_PORT_AUDIT_LOGGER}",
+                 "-timeout","${DOCKERIZE_WAIT_TIMEOUT}",
+                 "java",
+                 "-Dcom.sun.management.jmxremote",
+                 "-Dcom.sun.management.jmxremote.rmi.port=${NETWORK_VISUAL_VM_RMI_PORT_API_GATEWAY}",
+                 "-Dcom.sun.management.jmxremote.port=${NETWORK_VISUAL_VM_PORT_API_GATEWAY}",
+                 "-Dcom.sun.management.jmxremote.local.only=false",
+                 "-Dcom.sun.management.jmxremote.authenticate=false",
+                 "-Dcom.sun.management.jmxremote.ssl=false",
+                 "-Djava.rmi.server.hostname=${NETWORK_IP_DOCKER_HOST}",
+                 "-agentlib:jdwp=transport=dt_socket,address=${NETWORK_DEBUG_PORT_API_GATEWAY},server=y,suspend=n",
+                 "-XX:MaxRAM=256m","-jar","./app.jar"]
+    restart: on-failure
+
+  # UI
+  ui:
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_UI}
+    container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_UI}
+    hostname: ${SERVICE_NAME_UI}
+    ports:
+      - ${NETWORK_PORT_UI}:${NETWORK_PORT_UI}
+    networks:
+      edge:
+        ipv4_address: ${NETWORK_IP_UI}
+    depends_on:
+      - api-gateway
+    environment:
+      - SERVER_PORT=${NETWORK_PORT_UI}
+      - SSL_ENABLED=${NETWORK_SSL_ENABLED}
+      - GATEWAY_IP=${NETWORK_IP_API_GATEWAY}
+      - GATEWAY_PORT=${NETWORK_PORT_API_GATEWAY}
+    entrypoint: ["dockerize",
+                 "-wait","tcp://${NETWORK_IP_API_GATEWAY}:${NETWORK_PORT_API_GATEWAY}",
+                 "-timeout","${DOCKERIZE_WAIT_TIMEOUT}",
+                 "java",
+                 "-Djava.rmi.server.hostname=${NETWORK_IP_DOCKER_HOST}",
+                 "-XX:MaxRAM=256m","-jar","./app.jar","--spring.config.additional-location=/ssl.yml"]
+    restart: on-failure
+
+
+  # Grafana
+  grafana:
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_GRAFANA}
+    container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_GRAFANA}
+    hostname: ${SERVICE_NAME_GRAFANA}
+    ports:
+      - ${NETWORK_PORT_GRAFANA}:${NETWORK_PORT_GRAFANA} # Native Grafana UI
+    networks:
+      edge:
+        ipv4_address: ${NETWORK_IP_GRAFANA}
+    environment:
+      - EDGE_ANALYTICS_URL=http://${NETWORK_IP_API_GATEWAY}:${NETWORK_PORT_API_GATEWAY}/${SERVICE_NAME_ANALYTICS}
+      - EDGE_RCA_URL=http://${NETWORK_IP_RCA}:${NETWORK_PORT_RCA}
+      - GF_SERVER_DOMAIN=${ENV_GRAFANA_DOMAIN}
+      - GF_SERVER_ENFORCE_DOMAIN=${ENV_GRAFANA_ENFORCE_DOMAIN}
+      - GF_SERVER_PROTOCOL=${NETWORK_PROTOCOL_GRAFANA}
+      - GF_SERVER_CERT_FILE=${ENV_GRAFANA_CERT_FILE}
+      - GF_SERVER_CERT_KEY=${ENV_GRAFANA_CERT_KEY}
+      - GF_SERVER_HTTP_PORT=${NETWORK_PORT_GRAFANA}
+      - NETWORK_PORT_ANALYTICS=${NETWORK_PORT_ANALYTICS}
+      - NETWORK_IP_ANALYTICS=${NETWORK_IP_ANALYTICS}
+    env_file:
+      - grafana.env
+    restart: on-failure
+
+  # Analytics Service
+  analytics:
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_ANALYTICS}
+    container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_ANALYTICS}
+    hostname: ${SERVICE_NAME_ANALYTICS}
+    ports:
+      - ${NETWORK_PORT_ANALYTICS}:${NETWORK_PORT_ANALYTICS}
+      - ${NETWORK_DEBUG_PORT_ANALYTICS}:${NETWORK_DEBUG_PORT_ANALYTICS}
+      - ${NETWORK_VISUAL_VM_PORT_ANALYTICS}:${NETWORK_VISUAL_VM_PORT_ANALYTICS}
+      - ${NETWORK_VISUAL_VM_RMI_PORT_ANALYTICS}:${NETWORK_VISUAL_VM_RMI_PORT_ANALYTICS}
+    networks:
+      edge:
+        ipv4_address: ${NETWORK_IP_ANALYTICS}
+    depends_on:
+      - service-registry
+      - timescaledb
+      - rabbitmq
+    environment:
+      - SECURITY_PROFILE=no-security
+      - SPRING_PROFILES_ACTIVE=demo
+      - SERVER_PORT=${NETWORK_PORT_ANALYTICS}
+      - EUREKA_URL=http://${NETWORK_IP_SERVICE_REGISTRY}:${NETWORK_PORT_SERVICE_REGISTRY}/eureka/
+      - GRAFANA_URL=${NETWORK_PROTOCOL_GRAFANA}://${NETWORK_IP_DOCKER_HOST}:${NETWORK_PORT_GRAFANA}
+      - UAA_SERVICE_NAME=${SERVICE_NAME_UAA_SERVICE}
+      - POSTGRES_URL=jdbc:postgresql://${NETWORK_IP_POSTGRES}:${NETWORK_PORT_POSTGRES}/${ENV_POSTGRES_DB}
+      - POSTGRES_USERNAME=${ENV_POSTGRES_USER}
+      - POSTGRES_PASSWORD=${ENV_POSTGRES_PASSWORD}
+    env_file:
+      - ./rabbitmq.env
+    restart: on-failure
+    entrypoint: ["dockerize",
+                 "-wait","tcp://${NETWORK_IP_POSTGRES}:${NETWORK_PORT_POSTGRES}",
+                 "-wait","tcp://${NETWORK_IP_RABBITMQ}:${NETWORK_PORT_RABBITMQ1}",
+                 "-wait","tcp://${NETWORK_IP_SERVICE_REGISTRY}:${NETWORK_PORT_SERVICE_REGISTRY}",
+                 "-timeout", "${DOCKERIZE_WAIT_TIMEOUT}",
+                 "java",
+                 "-Dcom.sun.management.jmxremote",
+                 "-Dcom.sun.management.jmxremote.rmi.port=${NETWORK_VISUAL_VM_RMI_PORT_ANALYTICS}",
+                 "-Dcom.sun.management.jmxremote.port=${NETWORK_VISUAL_VM_PORT_ANALYTICS}",
+                 "-Dcom.sun.management.jmxremote.local.only=false",
+                 "-Dcom.sun.management.jmxremote.authenticate=false",
+                 "-Dcom.sun.management.jmxremote.ssl=false",
+                 "-Djava.rmi.server.hostname=${NETWORK_IP_DOCKER_HOST}",
+                 "-agentlib:jdwp=transport=dt_socket,address=${NETWORK_DEBUG_PORT_ANALYTICS},server=y,suspend=n",
+                 "-XX:MaxRAM=1024m","-Xms256m", "-Xmx512m",
+                 "-jar", "./app.jar"]
+
+  # RCA Service
+  rca:
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_RCA}
+    container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_RCA}
+    hostname: ${SERVICE_NAME_RCA}
+    ports:
+      - ${NETWORK_PORT_RCA}:${NETWORK_PORT_RCA}
+      - ${NETWORK_DEBUG_PORT_RCA}:${NETWORK_DEBUG_PORT_RCA}
+      - ${NETWORK_VISUAL_VM_PORT_RCA}:${NETWORK_VISUAL_VM_PORT_RCA}
+      - ${NETWORK_VISUAL_VM_RMI_PORT_RCA}:${NETWORK_VISUAL_VM_RMI_PORT_RCA}
+    networks:
+      edge:
+        ipv4_address: ${NETWORK_IP_RCA}
+    depends_on:
+      - analytics
+    environment:
+      - SERVER_PORT=${NETWORK_PORT_RCA}
+      - ANALYTICS_URL=http://${NETWORK_IP_API_GATEWAY}:${NETWORK_PORT_API_GATEWAY}/${SERVICE_NAME_ANALYTICS}
+      - POSTGRES_URL=jdbc:postgresql://${NETWORK_IP_POSTGRES}:${NETWORK_PORT_POSTGRES}/${ENV_POSTGRES_DB}
+      - POSTGRES_USERNAME=${ENV_POSTGRES_USER}
+      - POSTGRES_PASSWORD=${ENV_POSTGRES_PASSWORD}
+    restart: on-failure
+    entrypoint: ["dockerize",
+                 "-wait","tcp://${NETWORK_IP_ANALYTICS}:${NETWORK_PORT_ANALYTICS}",
+                 "-timeout", "${DOCKERIZE_WAIT_TIMEOUT}",
+                 "java",
+                 "-Dcom.sun.management.jmxremote",
+                 "-Dcom.sun.management.jmxremote.rmi.port=${NETWORK_VISUAL_VM_RMI_PORT_RCA}",
+                 "-Dcom.sun.management.jmxremote.port=${NETWORK_VISUAL_VM_PORT_RCA}",
+                 "-Dcom.sun.management.jmxremote.local.only=false",
+                 "-Dcom.sun.management.jmxremote.authenticate=false",
+                 "-Dcom.sun.management.jmxremote.ssl=false",
+                 "-Djava.rmi.server.hostname=${NETWORK_IP_DOCKER_HOST}",
+                 "-agentlib:jdwp=transport=dt_socket,address=${NETWORK_DEBUG_PORT_RCA},server=y,suspend=n",
+                 "-XX:MaxRAM=256m",
+                 "-jar", "./app.jar"]
+
+  # Default Simulator
+  default-simulator:
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_SIMULATOR}
+    container_name: ${SERVICES_PREFIX}-default-${SERVICE_NAME_SIMULATOR}
+    hostname: default-${SERVICE_NAME_SIMULATOR}
+    ports:
+      - ${NETWORK_PORT_SIMULATOR}:${NETWORK_PORT_SIMULATOR}
+    networks:
+      edge:
+        ipv4_address: ${NETWORK_IP_SIMULATOR}
+    environment:
+      - SERVER_PORT=${NETWORK_PORT_SIMULATOR}
+      - SIMULATOR_INFO_TYPE=${ENV_SIMULATOR_INFO_TYPE}
+      - SIMULATOR_INFO_NAME=${ENV_SIMULATOR_INFO_NAME}
+    restart: on-failure
+
+  # Simulator
+  simulator:
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_SIMULATOR}
+    expose:
+      - ${NETWORK_PORT_SIMULATOR}
+    networks:
+      - edge
+    environment:
+      - SERVER_PORT=${NETWORK_PORT_SIMULATOR}
+    restart: on-failure
+
+
+  # Demo Simulator
+  demo-simulator_1:
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_SIMULATOR}
+    container_name: ${SERVICES_PREFIX}-demo-${SERVICE_NAME_SIMULATOR_1}
+    hostname: default-${SERVICE_NAME_SIMULATOR_1}
+    expose:
+      - ${NETWORK_PORT_SIMULATOR_1}
+    networks:
+      edge:
+        ipv4_address: ${NETWORK_IP_SIMULATOR_1}
+    environment:
+      - SERVER_PORT=${NETWORK_PORT_SIMULATOR_1}
+      - SIMULATOR_INFO_TYPE=${ENV_SIMULATOR_INFO_TYPE_1}
+      - SIMULATOR_INFO_NAME=${ENV_SIMULATOR_INFO_NAME_1}
+      - SIMULATOR_INFO_DIVISION=${ENV_SIMULATOR_INFO_DIVISION_1}
+    restart: on-failure
+
+  demo-simulator_2:
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_SIMULATOR}
+    container_name: ${SERVICES_PREFIX}-demo-${SERVICE_NAME_SIMULATOR_2}
+    hostname: default-${SERVICE_NAME_SIMULATOR_2}
+    expose:
+      - ${NETWORK_PORT_SIMULATOR_2}
+    networks:
+      edge:
+        ipv4_address: ${NETWORK_IP_SIMULATOR_2}
+    environment:
+      - SERVER_PORT=${NETWORK_PORT_SIMULATOR_2}
+      - SIMULATOR_INFO_TYPE=${ENV_SIMULATOR_INFO_TYPE_2}
+      - SIMULATOR_INFO_NAME=${ENV_SIMULATOR_INFO_NAME_2}
+      - SIMULATOR_INFO_DIVISION=${ENV_SIMULATOR_INFO_DIVISION_2}
+    restart: on-failure
+
+  demo-simulator_3:
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_SIMULATOR}
+    container_name: ${SERVICES_PREFIX}-demo-${SERVICE_NAME_SIMULATOR_3}
+    hostname: default-${SERVICE_NAME_SIMULATOR_3}
+    expose:
+      - ${NETWORK_PORT_SIMULATOR_3}
+    networks:
+      edge:
+        ipv4_address: ${NETWORK_IP_SIMULATOR_3}
+    environment:
+      - SERVER_PORT=${NETWORK_PORT_SIMULATOR_3}
+      - SIMULATOR_INFO_TYPE=${ENV_SIMULATOR_INFO_TYPE_3}
+      - SIMULATOR_INFO_NAME=${ENV_SIMULATOR_INFO_NAME_3}
+      - SIMULATOR_INFO_DIVISION=${ENV_SIMULATOR_INFO_DIVISION_3}
+    restart: on-failure
+
+  demo-simulator_4:
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_SIMULATOR}
+    container_name: ${SERVICES_PREFIX}-demo-${SERVICE_NAME_SIMULATOR_4}
+    hostname: default-${SERVICE_NAME_SIMULATOR_4}
+    expose:
+      - ${NETWORK_PORT_SIMULATOR_4}
+    networks:
+      edge:
+        ipv4_address: ${NETWORK_IP_SIMULATOR_4}
+    environment:
+      - SERVER_PORT=${NETWORK_PORT_SIMULATOR_4}
+      - SIMULATOR_INFO_TYPE=${ENV_SIMULATOR_INFO_TYPE_4}
+      - SIMULATOR_INFO_NAME=${ENV_SIMULATOR_INFO_NAME_4}
+      - SIMULATOR_INFO_DIVISION=${ENV_SIMULATOR_INFO_DIVISION_4}
+    restart: on-failure
+
+  demo-simulator_5:
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_SIMULATOR}
+    container_name: ${SERVICES_PREFIX}-demo-${SERVICE_NAME_SIMULATOR_5}
+    hostname: default-${SERVICE_NAME_SIMULATOR_5}
+    expose:
+      - ${NETWORK_PORT_SIMULATOR_5}
+    networks:
+      edge:
+        ipv4_address: ${NETWORK_IP_SIMULATOR_5}
+    environment:
+      - SERVER_PORT=${NETWORK_PORT_SIMULATOR_5}
+      - SIMULATOR_INFO_TYPE=${ENV_SIMULATOR_INFO_TYPE_5}
+      - SIMULATOR_INFO_NAME=${ENV_SIMULATOR_INFO_NAME_5}
+      - SIMULATOR_INFO_DIVISION=${ENV_SIMULATOR_INFO_DIVISION_5}
+    restart: on-failure
+
+  demo-simulator_6:
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_SIMULATOR}
+    container_name: ${SERVICES_PREFIX}-demo-${SERVICE_NAME_SIMULATOR_6}
+    hostname: default-${SERVICE_NAME_SIMULATOR_6}
+    expose:
+      - ${NETWORK_PORT_SIMULATOR_6}
+    networks:
+      edge:
+        ipv4_address: ${NETWORK_IP_SIMULATOR_6}
+    environment:
+      - SERVER_PORT=${NETWORK_PORT_SIMULATOR_6}
+      - SIMULATOR_INFO_TYPE=${ENV_SIMULATOR_INFO_TYPE_6}
+      - SIMULATOR_INFO_NAME=${ENV_SIMULATOR_INFO_NAME_6}
+      - SIMULATOR_INFO_DIVISION=${ENV_SIMULATOR_INFO_DIVISION_6}
+    restart: on-failure
+
+  demo-simulator_7:
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_SIMULATOR}
+    container_name: ${SERVICES_PREFIX}-demo-${SERVICE_NAME_SIMULATOR_7}
+    hostname: default-${SERVICE_NAME_SIMULATOR_7}
+    expose:
+      - ${NETWORK_PORT_SIMULATOR_7}
+    networks:
+      edge:
+        ipv4_address: ${NETWORK_IP_SIMULATOR_7}
+    environment:
+      - SERVER_PORT=${NETWORK_PORT_SIMULATOR_7}
+      - SIMULATOR_INFO_TYPE=${ENV_SIMULATOR_INFO_TYPE_7}
+      - SIMULATOR_INFO_NAME=${ENV_SIMULATOR_INFO_NAME_7}
+      - SIMULATOR_INFO_DIVISION=${ENV_SIMULATOR_INFO_DIVISION_7}
+    restart: on-failure
+
+  demo-simulator_8:
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_SIMULATOR}
+    container_name: ${SERVICES_PREFIX}-demo-${SERVICE_NAME_SIMULATOR_8}
+    hostname: default-${SERVICE_NAME_SIMULATOR_8}
+    expose:
+      - ${NETWORK_PORT_SIMULATOR_8}
+    networks:
+      edge:
+        ipv4_address: ${NETWORK_IP_SIMULATOR_8}
+    environment:
+      - SERVER_PORT=${NETWORK_PORT_SIMULATOR_8}
+      - SIMULATOR_INFO_TYPE=${ENV_SIMULATOR_INFO_TYPE_8}
+      - SIMULATOR_INFO_NAME=${ENV_SIMULATOR_INFO_NAME_8}
+      - SIMULATOR_INFO_DIVISION=${ENV_SIMULATOR_INFO_DIVISION_8}
+    restart: on-failure
+
+  demo-simulator_9:
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_SIMULATOR}
+    container_name: ${SERVICES_PREFIX}-demo-${SERVICE_NAME_SIMULATOR_9}
+    hostname: default-${SERVICE_NAME_SIMULATOR_9}
+    expose:
+      - ${NETWORK_PORT_SIMULATOR_9}
+    networks:
+      edge:
+        ipv4_address: ${NETWORK_IP_SIMULATOR_9}
+    environment:
+      - SERVER_PORT=${NETWORK_PORT_SIMULATOR_9}
+      - SIMULATOR_INFO_TYPE=${ENV_SIMULATOR_INFO_TYPE_9}
+      - SIMULATOR_INFO_NAME=${ENV_SIMULATOR_INFO_NAME_9}
+      - SIMULATOR_INFO_DIVISION=${ENV_SIMULATOR_INFO_DIVISION_9}
+    restart: on-failure
+
+  demo-simulator_10:
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_SIMULATOR}
+    container_name: ${SERVICES_PREFIX}-demo-${SERVICE_NAME_SIMULATOR_10}
+    hostname: default-${SERVICE_NAME_SIMULATOR_10}
+    expose:
+      - ${NETWORK_PORT_SIMULATOR_10}
+    networks:
+      edge:
+        ipv4_address: ${NETWORK_IP_SIMULATOR_10}
+    environment:
+      - SERVER_PORT=${NETWORK_PORT_SIMULATOR_10}
+      - SIMULATOR_INFO_TYPE=${ENV_SIMULATOR_INFO_TYPE_10}
+      - SIMULATOR_INFO_NAME=${ENV_SIMULATOR_INFO_NAME_10}
+      - SIMULATOR_INFO_DIVISION=${ENV_SIMULATOR_INFO_DIVISION_10}
+    restart: on-failure
+
