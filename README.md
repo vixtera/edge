@@ -19,7 +19,7 @@ Installation script will install Docker Engine and Docker Compose prerequisites 
 
 User must be root or have sudo rights.
 
-Also you need request login/password by [vixtera.com](https://vixtera.com/contact-us/) for docker-registry.cmlatitude.com and for disributed version of applicaton (require authentication)
+Also you need request login/password by [vixtera.com](https://vixtera.com/contact-us/) for docker-registry.cmlatitude.com and for distributed version of applicaton (require authentication)
 
 #### Open ports on server
 
