@@ -79,10 +79,6 @@ File location: edge/monolith/.env or edge/distributed/.env
 
 Example: NETWORK_IP_DOCKER_HOST=54.88.37.71 or NETWORK_IP_DOCKER_HOST=vixtera-edge.domain.com
 
-#### Grant execution permissions to vixtera scripts
-
-* chmod +x edge/vixtera-edge-*
-
 #### Choose Vixtera Edge version - Monolith or Distributed
 
 #### Navigate to cloned edge folder:
