@@ -130,17 +130,6 @@ gpg --batch --gen-key gen-key-file
 } > /dev/null
 fi
 
-if [ $INST_D = true ]; then
-echo "Updating OS packages"
-{
-apt-get update
-} > /dev/null
-else
-        echo "Your system is not compatible, please check hardware requirements"
-exit 1
-fi
-
-
 echo Please enter username and password for https://docker-registry.cmlatitude.com/
 docker login docker-registry.cmlatitude.com
 cd monolith/

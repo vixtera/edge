@@ -122,6 +122,14 @@ else
 	apt-get -y install docker-compose >/dev/null
 fi
 
+if [ $CUR_OS_VER = 18.04 ]; then
+echo "Installing pass and haveged for docker login"
+{
+apt-get install -y pass haveged
+gpg --batch --gen-key gen-key-file
+} > /dev/null
+fi
+
 echo Please enter username and password for https://docker-registry.cmlatitude.com/
 docker login docker-registry.cmlatitude.com
 cd distributed/

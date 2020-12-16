@@ -35,7 +35,7 @@ Next ports should be open on server:
 
 ## Vixtera Edge monolith version
 
-* Operating system >= Ubuntu 18.04
+* Operating system = Ubuntu 18.04 or Ubuntu 20.04 (recommended)
 
 * System Memory >= 4 GB
 
@@ -47,7 +47,7 @@ Next ports should be open on server:
 
 ## Vixtera Edge distributed version
 
-* Operating system >= Ubuntu 18.04
+* Operating system = Ubuntu 18.04 or Ubuntu 20.04 (recommended)
 
 * System Memory >= 16 GB
 
