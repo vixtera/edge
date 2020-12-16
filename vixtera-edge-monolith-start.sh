@@ -122,6 +122,27 @@ else
 	apt-get -y install docker-compose >/dev/null
 fi
 
+if [ $CUR_OS_VER = 18.04 ]; then
+echo "Installing pass and haveged for docker login"
+{
+apt-get install -y pass haveged
+gpg --batch --gen-key gen-key-file
+} > /dev/null
+else 
+exit 0 
+fi
+
+if [ $INST_D = true ]; then
+echo "Updating OS packages"
+{
+apt-get update
+} > /dev/null
+else
+        echo "Your system is not compatible, please check hardware requirements"
+exit 1
+fi
+
+
 echo Please enter username and password for https://docker-registry.cmlatitude.com/
 docker login docker-registry.cmlatitude.com
 cd monolith/
