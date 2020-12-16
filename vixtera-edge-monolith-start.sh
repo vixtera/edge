@@ -128,7 +128,6 @@ echo "Installing pass and haveged for docker login"
 apt-get install -y pass haveged
 gpg --batch --gen-key gen-key-file
 } > /dev/null
-else 
 fi
 
 if [ $INST_D = true ]; then
