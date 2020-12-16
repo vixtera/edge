@@ -129,7 +129,6 @@ apt-get install -y pass haveged
 gpg --batch --gen-key gen-key-file
 } > /dev/null
 else 
-exit 0 
 fi
 
 if [ $INST_D = true ]; then
