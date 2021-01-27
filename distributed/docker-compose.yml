@@ -42,7 +42,7 @@ services:
 
   # Service Registry
   service-registry:
-    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_SERVICE_REGISTRY}
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_SERVICE_REGISTRY}:${SERVICE_IMAGE_TAG}
     container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_SERVICE_REGISTRY}
     hostname: ${SERVICE_NAME_SERVICE_REGISTRY}
     ports:
@@ -75,7 +75,7 @@ services:
 
   # UAA Service
   uaa-service:
-    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_UAA_SERVICE}
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_UAA_SERVICE}:${SERVICE_IMAGE_TAG}
     container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_UAA_SERVICE}
     hostname: ${SERVICE_NAME_UAA_SERVICE}
     ports:
@@ -114,7 +114,7 @@ services:
 
   # Cache
   cache:
-    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_CACHE}
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_CACHE}:${SERVICE_IMAGE_TAG}
     container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_CACHE}
     hostname: ${SERVICE_NAME_CACHE}
     ports:
@@ -156,7 +156,7 @@ services:
 
   # Catalog
   catalog:
-    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_CATALOG}
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_CATALOG}:${SERVICE_IMAGE_TAG}
     container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_CATALOG}
     hostname: ${SERVICE_NAME_CATALOG}
     ports:
@@ -203,7 +203,7 @@ services:
 
   # Inventory
   inventory:
-    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_INVENTORY}
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_INVENTORY}:${SERVICE_IMAGE_TAG}
     container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_INVENTORY}
     hostname: ${SERVICE_NAME_INVENTORY}
     ports:
@@ -239,6 +239,9 @@ services:
       - ENV_DEMO_RCA_PERSPECTIVE_NAME=${ENV_DEMO_RCA_PERSPECTIVE_NAME}
       - ENV_DEMO_RCA_SCENARIO_NAME=${ENV_DEMO_RCA_SCENARIO_NAME}
       - ENV_DEMO_RCA_INTERVAL=${ENV_DEMO_RCA_INTERVAL}
+      - INVENTORY_DATA_RETENTION_ENABLED=${ENV_INVENTORY_DATA_RETENTION_ENABLED}
+      - INVENTORY_DATA_RETENTION_READINGS_LIFETIME_SECONDS=${ENV_INVENTORY_DATA_RETENTION_READINGS_LIFETIME_SECONDS}
+      - INVENTORY_DATA_RETENTION_READINGS_CLEANING_FREQUENCY_SECONDS=${ENV_INVENTORY_DATA_RETENTION_READINGS_CLEANING_FREQUENCY_SECONDS}
     env_file:
       - ./rabbitmq.env
     entrypoint: ["dockerize",
@@ -263,7 +266,7 @@ services:
 
   # Agent Orchestrator
   agent-orchestrator:
-    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_AGENT_ORCHESTRATOR}
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_AGENT_ORCHESTRATOR}:${SERVICE_IMAGE_TAG}
     container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_AGENT_ORCHESTRATOR}
     hostname: ${SERVICE_NAME_AGENT_ORCHESTRATOR}
     ports:
@@ -311,7 +314,7 @@ services:
 
   # Agent
   agent:
-    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_AGENT}
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_AGENT}:${SERVICE_IMAGE_TAG}
     container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_AGENT}
     hostname: ${SERVICE_NAME_AGENT}
     ports:
@@ -359,7 +362,7 @@ services:
 
   # Event Manager
   event-manager:
-    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_EVENT_MANAGER}
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_EVENT_MANAGER}:${SERVICE_IMAGE_TAG}
     container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_EVENT_MANAGER}
     hostname: ${SERVICE_NAME_EVENT_MANAGER}
     ports:
@@ -388,9 +391,9 @@ services:
       - POSTGRES_URL=jdbc:postgresql://${NETWORK_IP_POSTGRES}:${NETWORK_PORT_POSTGRES}/${ENV_POSTGRES_DB}
       - POSTGRES_USERNAME=${ENV_POSTGRES_USER}
       - POSTGRES_PASSWORD:${ENV_POSTGRES_PASSWORD}
-      - EVENTS_RETENTION_CONFIG_ENABLED=${EVENTS_RETENTION_CONFIG_ENABLED}
-      - EVENTS_RETENTION_LIFETIME_SECONDS=${EVENTS_RETENTION_LIFETIME_SECONDS}
-      - EVENTS_RETENTION_CLEANING_STARTS_FREQUENSY_SECONDS=${EVENTS_RETENTION_CLEANING_STARTS_FREQUENSY_SECONDS}
+      - EVENT_MANAGER_DATA_RETENTION_ENABLED=${ENV_EVENT_MANAGER_DATA_RETENTION_ENABLED}
+      - EVENT_MANAGER_DATA_RETENTION_EVENTS_LIFETIME_SECONDS=${ENV_EVENT_MANAGER_DATA_RETENTION_EVENTS_LIFETIME_SECONDS}
+      - EVENT_MANAGER_DATA_RETENTION_EVENTS_CLEANING_FREQUENCY_SECONDS=${ENV_EVENT_MANAGER_DATA_RETENTION_EVENTS_CLEANING_FREQUENCY_SECONDS}
     env_file:
       - ./rabbitmq.env
     entrypoint: ["dockerize",
@@ -418,7 +421,7 @@ services:
 
   # Polling
   polling:
-    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_POLLING}
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_POLLING}:${SERVICE_IMAGE_TAG}
     container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_POLLING}
     hostname: ${SERVICE_NAME_POLLING}
     ports:
@@ -476,7 +479,7 @@ services:
 
   # Discovery
   discovery:
-    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_DISCOVERY}
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_DISCOVERY}:${SERVICE_IMAGE_TAG}
     container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_DISCOVERY}
     hostname: ${SERVICE_NAME_DISCOVERY}
     ports:
@@ -535,7 +538,7 @@ services:
 
   # Configuration Update
   configuration-update:
-    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_CONFIGURATION_UPDATE}
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_CONFIGURATION_UPDATE}:${SERVICE_IMAGE_TAG}
     container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_CONFIGURATION_UPDATE}
     hostname: ${SERVICE_NAME_CONFIGURATION_UPDATE}
     ports:
@@ -596,7 +599,7 @@ services:
 
   # Firmware Update
   firmware-update:
-    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_FIRMWARE_UPDATE}
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_FIRMWARE_UPDATE}:${SERVICE_IMAGE_TAG}
     container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_FIRMWARE_UPDATE}
     hostname: ${SERVICE_NAME_FIRMWARE_UPDATE}
     ports:
@@ -659,7 +662,7 @@ services:
 
   # Cloud Connector
   cloud-connector:
-    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_CLOUD_CONNECTOR}
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_CLOUD_CONNECTOR}:${SERVICE_IMAGE_TAG}
     container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_CLOUD_CONNECTOR}
     hostname: ${SERVICE_NAME_CLOUD_CONNECTOR}
     ports:
@@ -726,7 +729,7 @@ services:
 
   # Process Manager
   process-manager:
-    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_PROCESS_MANAGER}
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_PROCESS_MANAGER}:${SERVICE_IMAGE_TAG}
     container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_PROCESS_MANAGER}
     hostname: ${SERVICE_NAME_PROCESS_MANAGER}
     ports:
@@ -761,6 +764,9 @@ services:
       - POSTGRES_URL=jdbc:postgresql://${NETWORK_IP_POSTGRES}:${NETWORK_PORT_POSTGRES}/${ENV_POSTGRES_DB}
       - POSTGRES_USERNAME=${ENV_POSTGRES_USER}
       - POSTGRES_PASSWORD=${ENV_POSTGRES_PASSWORD}
+      - PROCESS_MANAGER_DATA_RETENTION_ENABLED=${ENV_PROCESS_MANAGER_DATA_RETENTION_ENABLED}
+      - PROCESS_MANAGER_DATA_RETENTION_PROCESS_LIFETIME_SECONDS=${ENV_PROCESS_MANAGER_DATA_RETENTION_PROCESS_LIFETIME_SECONDS}
+      - PROCESS_MANAGER_DATA_RETENTION_PROCESS_CLEANING_FREQUENCY_SECONDS=${ENV_PROCESS_MANAGER_DATA_RETENTION_PROCESS_CLEANING_FREQUENCY_SECONDS}
     env_file:
       - ./rabbitmq.env
     entrypoint: ["dockerize",
@@ -793,7 +799,7 @@ services:
 
   # Scheduler
   scheduler:
-    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_SCHEDULER}
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_SCHEDULER}:${SERVICE_IMAGE_TAG}
     container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_SCHEDULER}
     hostname: ${SERVICE_NAME_SCHEDULER}
     ports:
@@ -842,7 +848,7 @@ services:
 
   # Notification
   notification:
-    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_NOTIFICATION}
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_NOTIFICATION}:${SERVICE_IMAGE_TAG}
     container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_NOTIFICATION}
     hostname: ${SERVICE_NAME_NOTIFICATION}
     ports:
@@ -890,7 +896,7 @@ services:
 
   # Audit Logger
   audit-logger:
-    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_AUDIT_LOGGER}
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_AUDIT_LOGGER}:${SERVICE_IMAGE_TAG}
     container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_AUDIT_LOGGER}
     hostname: ${SERVICE_NAME_AUDIT_LOGGER}
     ports:
@@ -914,6 +920,9 @@ services:
       - POSTGRES_URL=jdbc:postgresql://${NETWORK_IP_POSTGRES}:${NETWORK_PORT_POSTGRES}/${ENV_POSTGRES_DB}
       - POSTGRES_USERNAME=${ENV_POSTGRES_USER}
       - POSTGRES_PASSWORD=${ENV_POSTGRES_PASSWORD}
+      - AUDIT_LOGGER_DATA_RETENTION_ENABLED=${ENV_AUDIT_LOGGER_DATA_RETENTION_ENABLED}
+      - AUDIT_LOGGER_DATA_RETENTION_LOGS_LIFETIME_SECONDS=${ENV_AUDIT_LOGGER_DATA_RETENTION_LOGS_LIFETIME_SECONDS}
+      - AUDIT_LOGGER_DATA_RETENTION_LOGS_CLEANING_FREQUENCY_SECONDS=${ENV_AUDIT_LOGGER_DATA_RETENTION_LOGS_CLEANING_FREQUENCY_SECONDS}
     env_file:
       - ./rabbitmq.env
     entrypoint: ["dockerize",
@@ -936,7 +945,7 @@ services:
 
   # API Gateway
   api-gateway:
-    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_API_GATEWAY}
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_API_GATEWAY}:${SERVICE_IMAGE_TAG}
     container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_API_GATEWAY}
     hostname: ${SERVICE_NAME_API_GATEWAY}
     ports:
@@ -1009,7 +1018,7 @@ services:
 
   # UI
   ui:
-    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_UI}
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_UI}:${SERVICE_IMAGE_TAG}
     container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_UI}
     hostname: ${SERVICE_NAME_UI}
     ports:
@@ -1035,7 +1044,7 @@ services:
 
   # Grafana
   grafana:
-    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_GRAFANA}
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_GRAFANA}:${SERVICE_IMAGE_TAG}
     container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_GRAFANA}
     hostname: ${SERVICE_NAME_GRAFANA}
     ports:
@@ -1060,7 +1069,7 @@ services:
 
   # Analytics Service
   analytics:
-    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_ANALYTICS}
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_ANALYTICS}:${SERVICE_IMAGE_TAG}
     container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_ANALYTICS}
     hostname: ${SERVICE_NAME_ANALYTICS}
     ports:
@@ -1107,7 +1116,7 @@ services:
 
   # RCA Service
   rca:
-    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_RCA}
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_RCA}:${SERVICE_IMAGE_TAG}
     container_name: ${SERVICES_PREFIX}-${SERVICE_NAME_RCA}
     hostname: ${SERVICE_NAME_RCA}
     ports:
@@ -1144,7 +1153,7 @@ services:
 
   # Default Simulator
   default-simulator:
-    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_SIMULATOR}
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_SIMULATOR}:${SERVICE_IMAGE_TAG}
     container_name: ${SERVICES_PREFIX}-default-${SERVICE_NAME_SIMULATOR}
     hostname: default-${SERVICE_NAME_SIMULATOR}
     ports:
@@ -1160,7 +1169,7 @@ services:
 
   # Simulator
   simulator:
-    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_SIMULATOR}
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_SIMULATOR}:${SERVICE_IMAGE_TAG}
     expose:
       - ${NETWORK_PORT_SIMULATOR}
     networks:
@@ -1172,7 +1181,7 @@ services:
 
   # Demo Simulator
   demo-simulator_1:
-    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_SIMULATOR}
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_SIMULATOR}:${SERVICE_IMAGE_TAG}
     container_name: ${SERVICES_PREFIX}-demo-${SERVICE_NAME_SIMULATOR_1}
     hostname: default-${SERVICE_NAME_SIMULATOR_1}
     expose:
@@ -1188,7 +1197,7 @@ services:
     restart: on-failure
 
   demo-simulator_2:
-    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_SIMULATOR}
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_SIMULATOR}:${SERVICE_IMAGE_TAG}
     container_name: ${SERVICES_PREFIX}-demo-${SERVICE_NAME_SIMULATOR_2}
     hostname: default-${SERVICE_NAME_SIMULATOR_2}
     expose:
@@ -1204,7 +1213,7 @@ services:
     restart: on-failure
 
   demo-simulator_3:
-    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_SIMULATOR}
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_SIMULATOR}:${SERVICE_IMAGE_TAG}
     container_name: ${SERVICES_PREFIX}-demo-${SERVICE_NAME_SIMULATOR_3}
     hostname: default-${SERVICE_NAME_SIMULATOR_3}
     expose:
@@ -1220,7 +1229,7 @@ services:
     restart: on-failure
 
   demo-simulator_4:
-    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_SIMULATOR}
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_SIMULATOR}:${SERVICE_IMAGE_TAG}
     container_name: ${SERVICES_PREFIX}-demo-${SERVICE_NAME_SIMULATOR_4}
     hostname: default-${SERVICE_NAME_SIMULATOR_4}
     expose:
@@ -1236,7 +1245,7 @@ services:
     restart: on-failure
 
   demo-simulator_5:
-    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_SIMULATOR}
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_SIMULATOR}:${SERVICE_IMAGE_TAG}
     container_name: ${SERVICES_PREFIX}-demo-${SERVICE_NAME_SIMULATOR_5}
     hostname: default-${SERVICE_NAME_SIMULATOR_5}
     expose:
@@ -1252,7 +1261,7 @@ services:
     restart: on-failure
 
   demo-simulator_6:
-    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_SIMULATOR}
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_SIMULATOR}:${SERVICE_IMAGE_TAG}
     container_name: ${SERVICES_PREFIX}-demo-${SERVICE_NAME_SIMULATOR_6}
     hostname: default-${SERVICE_NAME_SIMULATOR_6}
     expose:
@@ -1268,7 +1277,7 @@ services:
     restart: on-failure
 
   demo-simulator_7:
-    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_SIMULATOR}
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_SIMULATOR}:${SERVICE_IMAGE_TAG}
     container_name: ${SERVICES_PREFIX}-demo-${SERVICE_NAME_SIMULATOR_7}
     hostname: default-${SERVICE_NAME_SIMULATOR_7}
     expose:
@@ -1284,7 +1293,7 @@ services:
     restart: on-failure
 
   demo-simulator_8:
-    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_SIMULATOR}
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_SIMULATOR}:${SERVICE_IMAGE_TAG}
     container_name: ${SERVICES_PREFIX}-demo-${SERVICE_NAME_SIMULATOR_8}
     hostname: default-${SERVICE_NAME_SIMULATOR_8}
     expose:
@@ -1300,7 +1309,7 @@ services:
     restart: on-failure
 
   demo-simulator_9:
-    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_SIMULATOR}
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_SIMULATOR}:${SERVICE_IMAGE_TAG}
     container_name: ${SERVICES_PREFIX}-demo-${SERVICE_NAME_SIMULATOR_9}
     hostname: default-${SERVICE_NAME_SIMULATOR_9}
     expose:
@@ -1316,7 +1325,7 @@ services:
     restart: on-failure
 
   demo-simulator_10:
-    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_SIMULATOR}
+    image: ${SERVICE_IMAGE_PREFIX}/${SERVICE_IMAGE_SIMULATOR}:${SERVICE_IMAGE_TAG}
     container_name: ${SERVICES_PREFIX}-demo-${SERVICE_NAME_SIMULATOR_10}
     hostname: default-${SERVICE_NAME_SIMULATOR_10}
     expose:
